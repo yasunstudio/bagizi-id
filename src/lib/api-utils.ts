@@ -49,6 +49,45 @@ export function getBaseUrl(): string {
 }
 
 // ============================================
+// HEADERS CONVERSION UTILITIES
+// ============================================
+
+/**
+ * Convert Next.js ReadonlyHeaders to plain HeadersInit object
+ * 
+ * Next.js 15's headers() returns ReadonlyHeaders which cannot be passed
+ * directly as HeadersInit. This helper converts it to a plain object.
+ * 
+ * @param {ReadonlyHeaders} headers - Next.js ReadonlyHeaders from headers()
+ * @returns {Record<string, string>} Plain object suitable for HeadersInit
+ * 
+ * @example
+ * // Server Component
+ * import { headers } from 'next/headers'
+ * import { convertHeaders } from '@/lib/api-utils'
+ * 
+ * const headersList = await headers()
+ * const headersObj = convertHeaders(headersList)
+ * const result = await myApi.getById(id, headersObj)
+ */
+export function convertHeaders(headers: ReadonlyHeaders): Record<string, string> {
+  const headersObj: Record<string, string> = {}
+  headers.forEach((value, key) => {
+    headersObj[key] = value
+  })
+  return headersObj
+}
+
+/**
+ * Type definition for ReadonlyHeaders (Next.js 15+)
+ * This is a minimal type definition to avoid importing from next/headers
+ */
+interface ReadonlyHeaders {
+  forEach(callbackfn: (value: string, key: string) => void): void
+  get(name: string): string | null
+}
+
+// ============================================
 // FETCH OPTIONS BUILDER
 // ============================================
 

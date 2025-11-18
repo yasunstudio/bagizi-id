@@ -14,23 +14,14 @@
 
 import { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
-import Link from 'next/link'
 import { auth } from '@/auth'
 import { db } from '@/lib/prisma'
 import { canManageProcurement } from '@/lib/permissions'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb'
-import { ArrowLeft, AlertCircle } from 'lucide-react'
-import { ProcurementPlanForm } from '@/features/sppg/procurement/components'
+import { ProcurementPageHeader } from '@/components/shared/procurement'
+import { ArrowLeft, AlertCircle, ClipboardList } from 'lucide-react'
+import { PlanFormWizard } from '@/features/sppg/procurement/plans/components'
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params
@@ -103,56 +94,41 @@ export default async function EditProcurementPlanPage({ params }: { params: Prom
     redirect(`/procurement/plans/${id}`)
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Breadcrumb */}
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/dashboard">Dashboard</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/procurement">Pengadaan</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/procurement/plans">Rencana Pengadaan</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href={`/procurement/plans/${plan.id}`}>{plan.planName}</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>Edit</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+  // Transform Prisma result to component's expected type
+  // Enterprise Pattern: Explicit type transformation with validation
+  // Convert null values to undefined or defaults for form compatibility
+  const planFormData = {
+    id: plan.id,
+    programId: plan.programId ?? '',
+    planName: plan.planName,
+    planMonth: plan.planMonth,
+    planYear: plan.planYear,
+    planQuarter: plan.planQuarter === null ? undefined : plan.planQuarter,
+    targetRecipients: plan.targetRecipients,
+    targetMeals: plan.targetMeals,
+    totalBudget: plan.totalBudget,
+    proteinBudget: plan.proteinBudget ?? 0,
+    carbBudget: plan.carbBudget ?? 0,
+    vegetableBudget: plan.vegetableBudget ?? 0,
+    fruitBudget: plan.fruitBudget ?? 0,
+    otherBudget: plan.otherBudget ?? 0,
+    notes: plan.notes ?? '',
+  }
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Edit Rencana Pengadaan</h1>
-          <p className="text-muted-foreground mt-1">
-            Perbarui rencana budget dan target pengadaan
-          </p>
-        </div>
-        <Button variant="outline" asChild>
-          <Link href={`/procurement/plans/${plan.id}`}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Kembali
-          </Link>
-        </Button>
-      </div>
+  return (
+    <div className="container mx-auto py-6 space-y-6">
+      <ProcurementPageHeader
+        title="Edit Rencana Pengadaan"
+        description="Perbarui rencana budget dan target pengadaan"
+        icon={ClipboardList}
+        breadcrumbs={['Procurement', 'Plans', plan.planName, 'Edit']}
+        action={{
+          label: 'Kembali',
+          href: `/procurement/plans/${plan.id}`,
+          icon: ArrowLeft,
+          variant: 'outline'
+        }}
+      />
 
       {/* Revision Alert */}
       {plan.approvalStatus === 'REVISION' && plan.rejectionReason && (
@@ -173,21 +149,22 @@ export default async function EditProcurementPlanPage({ params }: { params: Prom
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
           <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-            <li>Hanya rencana dengan status DRAFT atau REVISION yang dapat diedit</li>
+            <li><strong>Step 1 - Informasi Dasar:</strong> Perbarui program, nama rencana, dan periode</li>
+            <li><strong>Step 2 - Alokasi Budget:</strong> Sesuaikan total budget dan distribusi per kategori</li>
+            <li><strong>Step 3 - Review:</strong> Tinjau perubahan sebelum menyimpan</li>
             <li>Perubahan pada budget akan mempengaruhi kalkulasi biaya per porsi</li>
             <li>Pastikan total budget kategori tidak melebihi total budget</li>
-            <li>Setelah mengajukan, rencana tidak dapat diedit sampai disetujui atau dikembalikan</li>
             {plan.approvalStatus === 'REVISION' && (
               <li className="font-medium text-yellow-800 dark:text-yellow-400">
-                Perhatikan alasan revisi di atas dan perbaiki sesuai catatan
+                ⚠️ Perhatikan alasan revisi di atas dan perbaiki sesuai catatan
               </li>
             )}
           </ul>
         </CardContent>
       </Card>
 
-      {/* Form */}
-      <ProcurementPlanForm plan={plan} />
+      {/* Form Wizard */}
+      <PlanFormWizard mode="edit" initialData={planFormData} />
     </div>
   )
 }

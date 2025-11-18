@@ -12,23 +12,14 @@
  */
 
 import { Metadata } from 'next'
-import Link from 'next/link'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb'
-import { ArrowLeft, Lightbulb } from 'lucide-react'
-import { ProcurementPlanForm } from '@/features/sppg/procurement/components'
+import { ProcurementPageHeader } from '@/components/shared/procurement'
+import { ArrowLeft, Lightbulb, ClipboardList } from 'lucide-react'
+import { PlanFormWizard } from '@/features/sppg/procurement/plans/components'
 
 export const metadata: Metadata = {
   title: 'Buat Rencana Pengadaan Baru | Bagizi-ID',
-  description: 'Buat rencana budget dan target pengadaan bulanan',
+  description: 'Buat rencana budget dan target pengadaan bulanan dengan wizard step-by-step',
 }
 
 /**
@@ -36,73 +27,42 @@ export const metadata: Metadata = {
  */
 export default async function CreateProcurementPlanPage() {
   return (
-    <div className="space-y-6">
-      {/* Breadcrumb */}
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/dashboard">Dashboard</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/procurement">Pengadaan</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/procurement/plans">Rencana Pengadaan</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>Buat Baru</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Buat Rencana Pengadaan Baru</h1>
-          <p className="text-muted-foreground mt-1">
-            Rencanakan budget dan target pengadaan untuk periode tertentu
-          </p>
-        </div>
-        <Button variant="outline" asChild>
-          <Link href="/procurement/plans">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Kembali
-          </Link>
-        </Button>
-      </div>
+    <div className="container mx-auto py-6 space-y-6">
+      <ProcurementPageHeader
+        title="Buat Rencana Pengadaan Baru"
+        description="Rencanakan budget dan target pengadaan untuk periode tertentu"
+        icon={ClipboardList}
+        breadcrumbs={['Procurement', 'Plans', 'New']}
+        action={{
+          label: 'Kembali',
+          href: '/procurement/plans',
+          icon: ArrowLeft,
+          variant: 'outline'
+        }}
+      />
 
       {/* Guidelines Card */}
       <Card className="border-primary/20 bg-primary/5">
         <CardHeader>
           <div className="flex items-center gap-2">
             <Lightbulb className="h-5 w-5 text-primary" />
-            <CardTitle className="text-lg">Panduan Membuat Rencana</CardTitle>
+            <CardTitle className="text-lg">Panduan Membuat Rencana Pengadaan</CardTitle>
           </div>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
           <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-            <li>Tentukan periode perencanaan (bulan, tahun, kuartal)</li>
-            <li>Alokasikan total budget yang tersedia</li>
-            <li>Bagi budget ke kategori (Protein, Karbohidrat, Sayuran, Buah, Lainnya)</li>
-            <li>Tetapkan target penerima dan jumlah makanan</li>
-            <li>Sistem akan menghitung biaya per porsi secara otomatis</li>
-            <li>Simpan sebagai Draft terlebih dahulu sebelum mengajukan</li>
-            <li>Rencana yang sudah disetujui dapat digunakan untuk membuat pengadaan</li>
+            <li><strong>Step 1 - Menu Plan:</strong> Pilih menu plan yang sudah disetujui untuk auto-populate data (opsional)</li>
+            <li><strong>Step 2 - Informasi Dasar:</strong> Isi program, nama rencana, periode, dan target penerima</li>
+            <li><strong>Step 3 - Alokasi Budget:</strong> Tetapkan total budget dan distribusi per kategori bahan</li>
+            <li><strong>Step 4 - Review:</strong> Tinjau semua data sebelum submit</li>
+            <li>Sistem akan memandu Anda langkah demi langkah untuk kemudahan pengisian</li>
+            <li>Anda dapat kembali ke step sebelumnya untuk edit data kapan saja</li>
           </ul>
         </CardContent>
       </Card>
 
-      {/* Form */}
-      <ProcurementPlanForm />
+      {/* Wizard Form */}
+      <PlanFormWizard />
     </div>
   )
 }

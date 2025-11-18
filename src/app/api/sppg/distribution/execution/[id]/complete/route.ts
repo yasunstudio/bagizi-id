@@ -122,7 +122,7 @@ export async function POST(
         },
         deliveries: {
           include: {
-            schoolBeneficiary: {
+            school: { // ✅ UPDATED (Phase 3)
               select: {
                 schoolName: true,
               },

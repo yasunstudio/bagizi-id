@@ -19,6 +19,9 @@ import type {
   MenuCreateResponse
 } from '../types'
 
+// Export Food Categories API
+export * from './foodCategoriesApi'
+
 // ================================ API BASE CONFIGURATION ================================
 
 /**
@@ -374,6 +377,12 @@ export * from './allergensApi'
 
 // Export menu actions API
 export * from './menuActionsApi'
+
+// Export menu plans API
+export * from './menuPlansApi'
+
+// Export recipe steps API
+export * from './recipeStepsApi'
 
 // Export default for convenience
 const menuDomainApi = {

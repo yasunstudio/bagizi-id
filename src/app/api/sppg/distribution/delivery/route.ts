@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
               status: true,
             },
           },
-          schoolBeneficiary: {
+          school: { // ✅ UPDATED (Phase 3)
             select: {
               id: true,
               schoolName: true,
@@ -210,7 +210,7 @@ export async function GET(request: NextRequest) {
       // Related data
       schedule: delivery.schedule,
       distribution: delivery.distribution,
-      schoolBeneficiary: delivery.schoolBeneficiary,
+      school: delivery.school, // ✅ UPDATED (Phase 3)
       
       // Metrics
       hasIssues: delivery.issues.length > 0,

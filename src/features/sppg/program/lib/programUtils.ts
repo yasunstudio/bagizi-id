@@ -6,7 +6,7 @@
 
 import { format } from 'date-fns'
 import { id as localeId } from 'date-fns/locale'
-import type { ProgramType, TargetGroup } from '@prisma/client'
+import type { ProgramType, TargetGroup, ProgramStatus } from '@prisma/client'
 
 /**
  * Format currency to IDR format
@@ -85,11 +85,11 @@ export function calculateProgress(
  */
 export function getStatusColor(status: string): string {
   const colors: Record<string, string> = {
-    ACTIVE: 'bg-green-500 text-white',
-    COMPLETED: 'bg-blue-500 text-white',
-    SUSPENDED: 'bg-red-500 text-white',
     DRAFT: 'bg-gray-500 text-white',
-    INACTIVE: 'bg-gray-400 text-white',
+    ACTIVE: 'bg-green-500 text-white',
+    PAUSED: 'bg-yellow-500 text-white',
+    COMPLETED: 'bg-blue-500 text-white',
+    CANCELLED: 'bg-red-500 text-white',
     ARCHIVED: 'bg-gray-600 text-white',
   }
   
@@ -105,11 +105,11 @@ export function getStatusVariant(
   status: string
 ): 'default' | 'secondary' | 'destructive' | 'outline' {
   const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-    ACTIVE: 'default',
-    COMPLETED: 'secondary',
-    SUSPENDED: 'destructive',
     DRAFT: 'outline',
-    INACTIVE: 'secondary',
+    ACTIVE: 'default',
+    PAUSED: 'secondary',
+    COMPLETED: 'secondary',
+    CANCELLED: 'destructive',
     ARCHIVED: 'outline',
   }
   
@@ -123,9 +123,9 @@ export function getStatusVariant(
  */
 export function getProgramTypeLabel(type: ProgramType | string): string {
   const labels: Record<string, string> = {
-    SUPPLEMENTARY_FEEDING: 'Pemberian Makanan Tambahan',
     NUTRITIONAL_RECOVERY: 'Pemulihan Gizi',
     NUTRITIONAL_EDUCATION: 'Edukasi Gizi',
+    FREE_NUTRITIOUS_MEAL: 'Makanan Bergizi Gratis',
     EMERGENCY_NUTRITION: 'Gizi Darurat',
     STUNTING_INTERVENTION: 'Intervensi Stunting',
   }
@@ -141,32 +141,70 @@ export function getProgramTypeLabel(type: ProgramType | string): string {
 export function getTargetGroupLabel(group: TargetGroup | string): string {
   const labels: Record<string, string> = {
     TODDLER: 'Balita',
-    SCHOOL_CHILDREN: 'Anak Sekolah',
-    TEENAGE_GIRL: 'Remaja Putri',
     PREGNANT_WOMAN: 'Ibu Hamil',
     BREASTFEEDING_MOTHER: 'Ibu Menyusui',
+    TEENAGE_GIRL: 'Remaja Putri',
     ELDERLY: 'Lansia',
+    SCHOOL_CHILDREN: 'Anak Sekolah',
   }
   
   return labels[group] || group
 }
 
 /**
- * Get status label in Indonesian
- * @param status - Program status
+ * Get Indonesian label for ProgramStatus enum
+ * @param status - ProgramStatus enum value
  * @returns Indonesian status label
  */
-export function getStatusLabel(status: string): string {
+export function getProgramStatusLabel(status: ProgramStatus | string): string {
   const labels: Record<string, string> = {
-    ACTIVE: 'Aktif',
-    COMPLETED: 'Selesai',
-    SUSPENDED: 'Ditangguhkan',
     DRAFT: 'Draft',
-    INACTIVE: 'Tidak Aktif',
+    ACTIVE: 'Aktif',
+    PAUSED: 'Dijeda',
+    COMPLETED: 'Selesai',
+    CANCELLED: 'Dibatalkan',
     ARCHIVED: 'Diarsipkan',
   }
   
   return labels[status] || status
+}
+
+/**
+ * Get Indonesian label for EnrollmentStatus enum
+ * @param status - EnrollmentStatus enum value
+ * @returns Indonesian status label
+ */
+export function getEnrollmentStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    PENDING: 'Menunggu',
+    ACTIVE: 'Aktif',
+    SUSPENDED: 'Ditangguhkan',
+    COMPLETED: 'Selesai',
+    CANCELLED: 'Dibatalkan',
+    GRADUATED: 'Lulus',
+  }
+  
+  return labels[status] || status
+}
+
+/**
+ * Get status variant for EnrollmentStatus
+ * @param status - EnrollmentStatus enum value
+ * @returns Badge variant
+ */
+export function getEnrollmentStatusVariant(
+  status: string
+): 'default' | 'secondary' | 'destructive' | 'outline' {
+  const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+    PENDING: 'outline',
+    ACTIVE: 'default',
+    SUSPENDED: 'secondary',
+    COMPLETED: 'secondary',
+    CANCELLED: 'destructive',
+    GRADUATED: 'default',
+  }
+  
+  return variants[status] || 'secondary'
 }
 
 /**
@@ -186,6 +224,16 @@ export function formatNumber(num: number | null | undefined): string {
   }
   
   return num.toString()
+}
+
+/**
+ * Format number with thousand separators (Indonesian format)
+ * @param num - Number to format
+ * @returns Formatted string with dots as thousand separators (e.g., "5.000", "1.250.000")
+ */
+export function formatNumberWithSeparator(num: number | null | undefined): string {
+  if (num === null || num === undefined) return '0'
+  return num.toLocaleString('id-ID')
 }
 
 /**

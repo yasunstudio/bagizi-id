@@ -16,3 +16,6 @@ export {
   useResetPassword,
   useUpdateStatus,
 } from './useUsers'
+
+export { useDepartmentsForUser } from './useDepartments'
+export { usePositionsForUser } from './usePositions'

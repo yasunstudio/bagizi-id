@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
           },
           deliveries: {
             include: {
-              schoolBeneficiary: {
+              school: { // ✅ UPDATED (Phase 3)
                 select: {
                   schoolName: true,
                 },
@@ -296,7 +296,7 @@ export async function POST(request: NextRequest) {
         },
         deliveries: {
           include: {
-            schoolBeneficiary: {
+            school: { // ✅ UPDATED (Phase 3)
               select: {
                 schoolName: true,
               },

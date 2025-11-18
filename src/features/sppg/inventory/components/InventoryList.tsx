@@ -135,19 +135,17 @@ function getStockIcon(status: StockStatus) {
 }
 
 /**
- * Format category label for display
+ * Format category label for display (FIXED: Match actual Prisma enum)
  */
 function formatCategory(category: InventoryCategory): string {
   const labels: Record<string, string> = {
-    PROTEIN_HEWANI: 'Protein Hewani',
-    PROTEIN_NABATI: 'Protein Nabati',
+    PROTEIN: 'Protein',
     KARBOHIDRAT: 'Karbohidrat',
     SAYURAN: 'Sayuran',
     BUAH: 'Buah',
-    SUSU: 'Susu',
-    MINYAK_LEMAK: 'Minyak & Lemak',
-    GULA: 'Gula',
+    SUSU_OLAHAN: 'Susu & Olahan',
     BUMBU_REMPAH: 'Bumbu & Rempah',
+    MINYAK_LEMAK: 'Minyak & Lemak',
     LAINNYA: 'Lainnya',
   }
   return labels[category] || category

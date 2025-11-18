@@ -16,29 +16,16 @@
 
 import { Metadata } from 'next'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { auth } from '@/auth'
 import { db } from '@/lib/prisma'
 import { checkSppgAccess, canManageProcurement } from '@/lib/permissions'
-import { ProcurementPlanList } from '@/features/sppg/procurement/components'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PlansPageClient } from './PlansPageClient'
+import { PlanStats } from '@/features/sppg/procurement/plans/components'
+import { ProcurementPageHeader } from '@/components/shared/procurement'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator
-} from '@/components/ui/breadcrumb'
-import { 
-  Plus,
-  Calendar,
-  CheckCircle2,
-  XCircle,
-  Clock
-} from 'lucide-react'
+import { ClipboardList, Plus } from 'lucide-react'
+import Link from 'next/link'
 
 export const metadata: Metadata = {
   title: 'Rencana Pengadaan | Bagizi-ID',
@@ -49,7 +36,7 @@ export const metadata: Metadata = {
  * Get procurement plan statistics for SPPG
  * 
  * @param {string} sppgId - SPPG ID for multi-tenant filtering
- * @returns {Promise<Object>} Procurement plan statistics
+ * @returns {Promise<Object>} Procurement plan statistics with budget calculations
  */
 async function getPlanStatistics(sppgId: string) {
   try {
@@ -58,6 +45,9 @@ async function getPlanStatistics(sppgId: string) {
       approvedPlans,
       draftPlans,
       submittedPlans,
+      rejectedPlans,
+      cancelledPlans,
+      allPlans
     ] = await Promise.all([
       // Total plans
       db.procurementPlan.count({
@@ -87,7 +77,42 @@ async function getPlanStatistics(sppgId: string) {
           approvalStatus: 'SUBMITTED'
         }
       }),
+
+      // Rejected plans
+      db.procurementPlan.count({
+        where: {
+          sppgId,
+          approvalStatus: 'REJECTED'
+        }
+      }),
+
+      // Cancelled plans
+      db.procurementPlan.count({
+        where: {
+          sppgId,
+          approvalStatus: 'CANCELLED'
+        }
+      }),
+
+      // Get all plans for budget calculations
+      db.procurementPlan.findMany({
+        where: { sppgId },
+        select: {
+          totalBudget: true,
+          targetRecipients: true,
+          targetMeals: true,
+          approvalStatus: true
+        }
+      })
     ])
+
+    // Calculate budget statistics
+    const totalBudget = allPlans.reduce((sum, plan) => sum + (plan.totalBudget || 0), 0)
+    const approvedBudget = allPlans
+      .filter(plan => plan.approvalStatus === 'APPROVED')
+      .reduce((sum, plan) => sum + (plan.totalBudget || 0), 0)
+    const targetRecipients = allPlans.reduce((sum, plan) => sum + (plan.targetRecipients || 0), 0)
+    const targetMeals = allPlans.reduce((sum, plan) => sum + (plan.targetMeals || 0), 0)
 
     // Calculate percentages
     const approvedPercentage = totalPlans > 0 
@@ -99,20 +124,43 @@ async function getPlanStatistics(sppgId: string) {
       : 0
 
     return {
-      total: totalPlans,
-      approved: approvedPlans,
-      draft: draftPlans,
-      submitted: submittedPlans,
+      // Plan counts by status
+      totalPlans,
+      byStatus: {
+        draft: draftPlans,
+        submitted: submittedPlans,
+        approved: approvedPlans,
+        rejected: rejectedPlans,
+        cancelled: cancelledPlans
+      },
+      
+      // Budget statistics
+      totalBudget,
+      allocatedBudget: approvedBudget,
+      
+      // Target metrics
+      targetRecipients,
+      targetMeals,
+      
+      // Percentages
       approvedPercentage,
       draftPercentage,
     }
   } catch (error) {
     console.error('Error fetching plan statistics:', error)
     return {
-      total: 0,
-      approved: 0,
-      draft: 0,
-      submitted: 0,
+      totalPlans: 0,
+      byStatus: {
+        draft: 0,
+        submitted: 0,
+        approved: 0,
+        rejected: 0,
+        cancelled: 0
+      },
+      totalBudget: 0,
+      allocatedBudget: 0,
+      targetRecipients: 0,
+      targetMeals: 0,
       approvedPercentage: 0,
       draftPercentage: 0,
     }
@@ -156,138 +204,101 @@ export default async function ProcurementPlansPage() {
   // DATA FETCHING
   // ============================================
 
-  const statistics = await getPlanStatistics(sppgId)
+  const [statistics, plans] = await Promise.all([
+    getPlanStatistics(sppgId),
+    // Fetch procurement plans
+    db.procurementPlan.findMany({
+      where: { sppgId },
+      include: {
+        program: {
+          select: {
+            name: true
+          }
+        },
+        menuPlan: {
+          select: {
+            id: true,
+            name: true,
+            startDate: true,
+            endDate: true,
+            status: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    })
+  ])
 
   // ============================================
   // RENDER PAGE
   // ============================================
 
+  // Transform statistics for PlanStats component (SAME AS PlansPageClient)
+  const usedBudget = plans
+    .filter(p => p.approvalStatus === 'APPROVED')
+    .reduce((sum, p) => sum + (p.totalBudget || 0), 0)
+  
+  const remainingBudget = statistics.totalBudget - usedBudget
+
+  const planStatsData = {
+    totalPlans: statistics.totalPlans,
+    totalBudget: statistics.totalBudget,
+    allocatedBudget: statistics.allocatedBudget,
+    usedBudget,
+    remainingBudget,
+    targetRecipients: statistics.targetRecipients,
+    targetMeals: statistics.targetMeals,
+    byStatus: {
+      draft: statistics.byStatus.draft,
+      submitted: statistics.byStatus.submitted,
+      underReview: 0,
+      approved: statistics.byStatus.approved,
+      rejected: statistics.byStatus.rejected,
+      cancelled: statistics.byStatus.cancelled,
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* ================================ HEADER ================================ */}
       
-      <div className="flex items-start justify-between">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-bold tracking-tight">Rencana Pengadaan</h1>
-          <p className="text-muted-foreground">
-            Kelola rencana budget dan target pengadaan bulanan di <span className="font-medium">{sppg.name}</span>
-          </p>
-        </div>
+      <div className="flex items-center justify-between">
+        <ProcurementPageHeader
+          title="Rencana Pengadaan"
+          description={`Kelola rencana budget dan target pengadaan bulanan di ${sppg.name}`}
+          icon={ClipboardList}
+          breadcrumbs={['Procurement', 'Plans']}
+        />
+        
+        {/* Button: Create New Plan */}
         <Button asChild>
           <Link href="/procurement/plans/new">
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="h-4 w-4 mr-2" />
             Buat Rencana Baru
           </Link>
         </Button>
       </div>
 
-      {/* ================================ BREADCRUMB ================================ */}
+      {/* ================================ STATISTICS (OUTSIDE CARD - SAME AS SUPPLIERS) ================================ */}
       
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/dashboard">Dashboard</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/procurement">Pengadaan</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>Rencana Pengadaan</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <PlanStats stats={planStatsData} />
 
-      <Separator />
-
-      {/* ================================ STATISTICS CARDS ================================ */}
+      {/* ================================ PLANS LIST (INSIDE CARD - SAME AS SUPPLIERS) ================================ */}
       
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {/* Total Plans Card */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Total Rencana
-            </CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{statistics.total}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Semua rencana pengadaan
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Approved Plans Card */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Rencana Disetujui
-            </CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {statistics.approved}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              <span className="font-medium text-green-600">
-                {statistics.approvedPercentage}%
-              </span>{' '}
-              dari total rencana
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Draft Plans Card */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Draft Rencana
-            </CardTitle>
-            <XCircle className="h-4 w-4 text-orange-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">
-              {statistics.draft}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              <span className="font-medium text-orange-600">
-                {statistics.draftPercentage}%
-              </span>{' '}
-              dari total rencana
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Submitted Plans Card */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Menunggu Persetujuan
-            </CardTitle>
-            <Clock className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
-              {statistics.submitted}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Perlu ditinjau
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ================================ CONTENT ================================ */}
-      
-      <ProcurementPlanList />
+      <Card>
+        <CardHeader>
+          <CardTitle>Semua Rencana Pengadaan</CardTitle>
+          <CardDescription>
+            Daftar lengkap rencana pengadaan yang terdaftar dalam sistem
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PlansPageClient plans={plans} />
+        </CardContent>
+      </Card>
     </div>
   )
 }
+

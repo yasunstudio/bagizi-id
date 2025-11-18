@@ -1,414 +1,241 @@
 /**
- * @fileoverview Main Procurement List Page - Comprehensive SPPG procurement management
+ * @fileoverview Procurement Dashboard - Business Process Overview
  * @version Next.js 15.5.4 / Auth.js v5 / Prisma 6.17.1
  * @author Bagizi-ID Development Team
+ * @see {@link /docs/PROCUREMENT_NAVIGATION_IMPLEMENTATION.md} Navigation Structure
  * @see {@link /docs/copilot-instructions.md} Development Guidelines
  * 
+ * ARCHITECTURE: Business Process View (Option A)
+ * - Dashboard as overview/entry point
+ * - Sub-modules for workflow steps:
+ *   1. Planning   → /procurement/plans
+ *   2. Ordering   → /procurement/orders (main workflow)
+ *   3. Receiving  → /procurement/receipts
+ *   4. Supplier   → /procurement/suppliers
+ *   5. Payment    → /procurement/payments (placeholder)
+ *   6. Reports    → /procurement/reports (placeholder)
+ * 
+ * PATTERN: Modular Feature-Based Architecture ✅
+ * - Uses API endpoint: /api/sppg/procurement/dashboard
+ * - API Client: dashboardApi.getStats()
+ * - Thin orchestrator: Auth → Fetch → Render
+ * - Consistent with menu, orders, plans modules
+ * 
  * ENTERPRISE-GRADE FEATURES:
- * - Server Component with SSR for optimal performance
+ * - Server Component with SSR
  * - Authentication & Authorization (RBAC)
- * - SEO optimization with metadata
- * - Breadcrumb navigation
- * - Client component integration (ProcurementList)
  * - Multi-tenant data isolation (sppgId filtering)
- * - Comprehensive error handling
- * - Loading states with Suspense
+ * - Real-time statistics via API
+ * - Quick action buttons
+ * - Recent activities feed
+ * - Pending approvals
+ * - Low stock alerts
+ * - Upcoming deliveries
  * - Dark mode support
- * - Accessibility compliance (WCAG 2.1 AA)
+ * - SEO optimization
  */
 
 import { Metadata } from 'next'
 import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
 import { auth } from '@/auth'
-import { ProcurementList } from '@/features/sppg/procurement/components'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
+import { checkSppgAccess } from '@/lib/permissions'
+import { dashboardApi } from '@/features/sppg/procurement/dashboard/api/dashboardApi'
 import { 
-  ShoppingCart, 
-  Plus, 
-  FileText, 
-  TrendingUp,
-  Users,
-  Package
-} from 'lucide-react'
-import Link from 'next/link'
+  ProcurementStats,
+  RecentActivities,
+  PendingApprovals,
+  LowStockAlerts,
+  UpcomingDeliveries,
+  QuickActionsGrid
+} from '@/features/sppg/procurement/dashboard/components'
+import { ProcurementPageHeader } from '@/components/shared/procurement'
+import { Separator } from '@/components/ui/separator'
+import { ShoppingCart } from 'lucide-react'
 
 // ================================ METADATA ================================
 
 export const metadata: Metadata = {
-  title: 'Manajemen Procurement | Bagizi SPPG',
-  description: 'Kelola pengadaan bahan baku dan supplier untuk program gizi SPPG. Sistem procurement terintegrasi dengan perencanaan menu dan inventori.',
+  title: 'Procurement Dashboard | Bagizi SPPG',
+  description: 'Dashboard overview untuk manajemen pengadaan bahan baku SPPG. Monitor status pembelian, approval, delivery, dan payment secara real-time.',
   keywords: [
-    'procurement management',
+    'procurement dashboard',
     'pengadaan SPPG',
-    'supplier management',
-    'purchase orders',
-    'procurement planning',
-    'food procurement',
-    'nutrition program procurement'
+    'procurement overview',
+    'purchase order monitoring',
+    'procurement analytics',
+    'supplier management dashboard'
   ],
   openGraph: {
-    title: 'Manajemen Procurement - Bagizi SPPG',
-    description: 'Sistem manajemen procurement terintegrasi untuk SPPG',
+    title: 'Procurement Dashboard - Bagizi SPPG',
+    description: 'Monitor dan kelola seluruh proses procurement SPPG',
     type: 'website',
   },
-}
-
-// ================================ TYPES ================================
-
-interface ProcurementPageProps {
-  searchParams?: Promise<{
-    supplier?: string
-    plan?: string
-    status?: string
-    method?: string
-  }>
-}
-
-// ================================ HELPER FUNCTIONS ================================
-
-/**
- * Get procurement statistics for the current SPPG
- * This would typically come from an API, but for now we'll mock it
- * TODO: Replace with actual API call to /api/sppg/procurement/statistics
- * 
- * @param sppgId - SPPG ID (will be used when API is implemented)
- */
-async function getProcurementStats(sppgId: string) {
-  // Mock data - replace with actual API call
-  // TODO: Implement API call: const response = await fetch(`/api/sppg/procurement/statistics?sppgId=${sppgId}`)
-  void sppgId // Mark as intentionally unused for now
-  
-  return {
-    total: 0,
-    pending: 0,
-    approved: 0,
-    completed: 0,
-    totalValue: 0,
-  }
 }
 
 // ================================ MAIN COMPONENT ================================
 
 /**
- * Main Procurement List Page (Server Component)
+ * Procurement Dashboard Page (Server Component)
+ * 
+ * Purpose: Entry point untuk procurement module dengan overview lengkap
+ * Pattern: Thin Orchestrator - Auth → Fetch via API → Render
+ * 
+ * Business Process Flow:
+ * 1. User lands on dashboard → Lihat stats & recent activities
+ * 2. Click "Perencanaan" → /procurement/plans (planning & budgeting)
+ * 3. Click "Purchase Orders" → /procurement/orders (main procurement list)
+ * 4. Click "Penerimaan Barang" → /procurement/receipts (receiving & QC)
+ * 5. Click "Supplier" → /procurement/suppliers (supplier management)
+ * 6. Click "Pembayaran" → /procurement/payments (payment tracking)
+ * 7. Click "Laporan" → /procurement/reports (analytics & reports)
  * 
  * Features:
- * - SSR for optimal performance and SEO
- * - Authentication guard with session check
- * - Authorization guard with role-based access
- * - Multi-tenant data isolation (sppgId filtering)
- * - URL search params for filters (supplier, plan, status, method)
- * - Quick action buttons (Create, View Suppliers, View Plans)
- * - Statistics cards (Total, Pending, Approved, Completed)
- * - Client component integration (ProcurementList)
- * - Breadcrumb navigation
- * - Responsive layout
+ * - Real-time procurement statistics via API
+ * - Pending approvals count
+ * - Recent activities timeline
+ * - Low stock alerts
+ * - Upcoming deliveries schedule
+ * - Quick action buttons to sub-modules
+ * 
+ * Architecture Note:
+ * Uses dashboardApi client (modular pattern) instead of direct Prisma queries.
+ * Consistent with existing menu, orders, plans implementations.
  */
-export default async function ProcurementPage({ searchParams }: ProcurementPageProps) {
-  const resolvedSearchParams = await searchParams
-  
+export default async function ProcurementDashboardPage() {
   // ================================ AUTHENTICATION ================================
   
   const session = await auth()
   
-  // Redirect if not authenticated
   if (!session?.user) {
-    redirect('/login?callbackUrl=/procurement')
+    redirect('/login')
   }
 
   // ================================ AUTHORIZATION ================================
   
-  // Check SPPG access (multi-tenant security)
+  const userRole = session.user.userRole
   const sppgId = session.user.sppgId
-  
+
   if (!sppgId) {
-    redirect('/access-denied?reason=no-sppg')
+    redirect('/access-denied?reason=no_sppg')
   }
 
-  // Check role permissions for procurement management
-  const userRole = session.user.userRole
-  const canManageProcurement = userRole ? [
+  // Verify SPPG access
+  const sppg = await checkSppgAccess(sppgId)
+  if (!sppg) {
+    redirect('/access-denied?reason=invalid_sppg')
+  }
+
+  // Check if user has procurement access
+  const canAccessProcurement = [
     'SPPG_KEPALA',
     'SPPG_ADMIN',
     'SPPG_AKUNTAN',
     'SPPG_PRODUKSI_MANAGER',
-  ].includes(userRole) : false
+    'SPPG_STAFF',
+    'SPPG_STAFF_QC'
+  ].includes(userRole || '')
 
-  const canViewOnly = userRole === 'SPPG_VIEWER'
-
-  // ================================ DATA FETCHING ================================
-  
-  // Get procurement statistics (async - will be replaced with API call)
-  const stats = await getProcurementStats(sppgId)
-
-  // Extract URL search params for filtering
-  const filters = {
-    supplierId: resolvedSearchParams?.supplier,
-    planId: resolvedSearchParams?.plan,
-    status: resolvedSearchParams?.status,
-    method: resolvedSearchParams?.method,
+  if (!canAccessProcurement) {
+    redirect('/access-denied?reason=insufficient_permissions')
   }
+
+  // ================================ DATA FETCHING VIA API ================================
+  
+  /**
+   * Fetch dashboard data via API client (modular pattern)
+   * Uses existing /api/sppg/procurement/dashboard endpoint (262 lines)
+   * Consistent with menu, orders, plans modules
+   * 
+   * Benefits:
+   * - Reuses existing API endpoint
+   * - Consistent architecture across modules
+   * - Easier testing (mock API client)
+   * - Single source of truth for data fetching logic
+   * - Automatic caching via Next.js
+   * 
+   * CRITICAL: Must forward cookies from incoming request to API endpoint
+   * for authentication to work in Server Component → API route flow
+   */
+  const headersList = await headers()
+  const cookieHeader = headersList.get('cookie')
+  const requestHeaders = cookieHeader ? { Cookie: cookieHeader } : undefined
+  
+  const result = await dashboardApi.getStats(requestHeaders)
+  
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to load dashboard statistics')
+  }
+
+  // Destructure data from API response
+  const {
+    orders,
+    plans,
+    suppliers,
+    recentActivities,
+    pendingApprovals,
+    lowStockItems,
+    upcomingDeliveries
+  } = result.data
 
   // ================================ RENDER ================================
 
   return (
     <div className="container mx-auto py-6 space-y-6">
-      {/* ================================ HEADER ================================ */}
-      
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <ShoppingCart className="h-6 w-6 text-primary" />
-            <h1 className="text-3xl font-bold tracking-tight">
-              Manajemen Procurement
-            </h1>
-          </div>
-          <p className="text-muted-foreground">
-            Kelola pengadaan bahan baku dan supplier untuk program gizi SPPG
-          </p>
-        </div>
+      <ProcurementPageHeader
+        title="Procurement Dashboard"
+        description={`Monitor dan kelola seluruh proses pengadaan bahan baku untuk ${sppg.name}`}
+        icon={ShoppingCart}
+        breadcrumbs={['Procurement']}
+      />
 
-        {/* Quick Actions */}
-        {canManageProcurement && (
-          <div className="flex flex-wrap gap-2">
-            <Button asChild>
-              <Link href="/procurement/new">
-                <Plus className="mr-2 h-4 w-4" />
-                Buat Procurement Baru
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/procurement/suppliers">
-                <Users className="mr-2 h-4 w-4" />
-                Kelola Supplier
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/procurement/plans">
-                <FileText className="mr-2 h-4 w-4" />
-                Lihat Rencana
-              </Link>
-            </Button>
-          </div>
-        )}
-      </div>
+      {/* Statistics Cards - Pass stats object from API */}
+      <ProcurementStats stats={{ orders, plans, suppliers }} />
+
+      {/* Quick Actions Grid - No props needed */}
+      <QuickActionsGrid />
 
       <Separator />
 
-      {/* ================================ BREADCRUMB ================================ */}
-      
-      <nav className="flex items-center space-x-2 text-sm text-muted-foreground">
-        <Link 
-          href="/dashboard" 
-          className="hover:text-foreground transition-colors"
-        >
-          Dashboard
-        </Link>
-        <span>/</span>
-        <span className="text-foreground font-medium">Procurement</span>
-      </nav>
+      {/* Main Content Grid */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Left Column */}
+        <div className="space-y-6">
+          {/* Pending Approvals - Pass approvals array from API */}
+          <PendingApprovals approvals={pendingApprovals} />
 
-      {/* ================================ STATISTICS CARDS ================================ */}
-      
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {/* Total Procurement */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Total Procurement
-            </CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="text-xs text-muted-foreground">
-              Semua procurement order
-            </p>
-          </CardContent>
-        </Card>
+          {/* Low Stock Alerts - Pass items array from API */}
+          <LowStockAlerts items={lowStockItems} />
+        </div>
 
-        {/* Pending Approval */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Menunggu Persetujuan
-            </CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.pending}</div>
-            <p className="text-xs text-muted-foreground">
-              Perlu review dan approval
-            </p>
-          </CardContent>
-        </Card>
+        {/* Right Column */}
+        <div className="space-y-6">
+          {/* Recent Activities - Pass activities array from API */}
+          <RecentActivities activities={recentActivities} />
 
-        {/* Approved */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Disetujui
-            </CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.approved}</div>
-            <p className="text-xs text-muted-foreground">
-              Procurement yang disetujui
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Total Value */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Total Nilai
-            </CardTitle>
-            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {new Intl.NumberFormat('id-ID', {
-                style: 'currency',
-                currency: 'IDR',
-                minimumFractionDigits: 0,
-              }).format(stats.totalValue)}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Nilai total procurement
-            </p>
-          </CardContent>
-        </Card>
+          {/* Upcoming Deliveries - Pass deliveries array from API */}
+          <UpcomingDeliveries deliveries={upcomingDeliveries} />
+        </div>
       </div>
 
-      {/* ================================ ACTIVE FILTERS DISPLAY ================================ */}
-      
-      {(filters.supplierId || filters.planId || filters.status || filters.method) && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Filter Aktif</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {filters.supplierId && (
-                <Badge variant="secondary">
-                  Supplier ID: {filters.supplierId}
-                </Badge>
-              )}
-              {filters.planId && (
-                <Badge variant="secondary">
-                  Plan ID: {filters.planId}
-                </Badge>
-              )}
-              {filters.status && (
-                <Badge variant="secondary">
-                  Status: {filters.status}
-                </Badge>
-              )}
-              {filters.method && (
-                <Badge variant="secondary">
-                  Method: {filters.method}
-                </Badge>
-              )}
-              <Button
-                asChild
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2"
-              >
-                <Link href="/procurement">
-                  Hapus Semua Filter
-                </Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ================================ VIEW-ONLY NOTICE ================================ */}
-      
-      {canViewOnly && (
-        <Card className="border-yellow-500/50 bg-yellow-500/10">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              Mode Tampilan Saja
-            </CardTitle>
-            <CardDescription>
-              Anda memiliki akses read-only. Hubungi administrator untuk izin edit.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
-
-      {/* ================================ MAIN CONTENT - PROCUREMENT LIST ================================ */}
-      
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ShoppingCart className="h-5 w-5" />
-            Daftar Procurement
-          </CardTitle>
-          <CardDescription>
-            Semua procurement order untuk SPPG Anda
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {/* 
-            Client Component: ProcurementList
-            - Full TanStack Table integration
-            - 7 columns with comprehensive features
-            - Client-side search and filtering
-            - CRUD operations (view/edit/delete)
-            - Loading/error/empty states
-            - 693 lines of enterprise-grade code
-          */}
-          <ProcurementList
-            supplierId={filters.supplierId}
-            planId={filters.planId}
-          />
-        </CardContent>
-      </Card>
-
-      {/* ================================ FOOTER INFO ================================ */}
-      
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col gap-4 text-sm text-muted-foreground">
-            <div className="flex items-start gap-2">
-              <FileText className="h-4 w-4 mt-0.5 flex-shrink-0" />
-              <div>
-                <strong>Tentang Procurement:</strong>
-                <p className="mt-1">
-                  Sistem procurement membantu Anda mengelola pengadaan bahan baku
-                  dari supplier untuk program gizi SPPG. Setiap procurement order
-                  terintegrasi dengan perencanaan menu dan manajemen inventori.
-                </p>
-              </div>
-            </div>
-            
-            <Separator />
-            
-            <div className="flex items-start gap-2">
-              <TrendingUp className="h-4 w-4 mt-0.5 flex-shrink-0" />
-              <div>
-                <strong>Workflow Procurement:</strong>
-                <ol className="mt-1 list-decimal list-inside space-y-1">
-                  <li>Buat rencana procurement berdasarkan menu planning</li>
-                  <li>Pilih supplier dan buat purchase order</li>
-                  <li>Submit untuk approval (jika diperlukan)</li>
-                  <li>Proses pengadaan dan penerimaan barang</li>
-                  <li>Update inventori dan tracking kualitas</li>
-                </ol>
-              </div>
-            </div>
+      {/* Footer Info */}
+      <div className="mt-8 p-4 bg-muted/50 dark:bg-muted/20 rounded-lg border border-border/50">
+        <div className="flex items-start gap-3">
+          <ShoppingCart className="h-5 w-5 text-muted-foreground mt-0.5" />
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Procurement Workflow</p>
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium">Planning</span> → Buat rencana pengadaan dengan alokasi budget
+              {' • '}
+              <span className="font-medium">Ordering</span> → Generate purchase orders dari planning
+              {' • '}
+              <span className="font-medium">Receiving</span> → Quality control dan penerimaan barang
+              {' • '}
+              <span className="font-medium">Payment</span> → Track status pembayaran dan jatuh tempo
+            </p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }

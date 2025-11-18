@@ -54,6 +54,36 @@ export async function GET(
               code: true,
             },
           },
+          // ✅ Include beneficiaryEnrollments for Overview tab
+          // Filter by:
+          // 1. isActive: true (only active enrollments)
+          // 2. targetGroup IN allowedTargetGroups (only allowed target groups)
+          // NOTE: We'll filter targetGroup after fetching program.allowedTargetGroups
+          beneficiaryEnrollments: {
+            where: {
+              isActive: true
+            },
+            select: {
+              id: true,
+              enrollmentStatus: true,
+              enrollmentDate: true,
+              startDate: true,
+              endDate: true,
+              targetBeneficiaries: true,
+              activeBeneficiaries: true,
+              targetGroup: true,
+              beneficiaryOrg: {
+                select: {
+                  id: true,
+                  organizationName: true,
+                  type: true,
+                }
+              }
+            },
+            orderBy: {
+              enrollmentDate: 'desc'
+            }
+          },
           ...(includeStats && {
             _count: {
               select: {
@@ -61,7 +91,7 @@ export async function GET(
                 menuPlans: true,
                 productions: true,
                 distributions: true,
-                schools: true,
+                beneficiaryEnrollments: true, // ✅ FIXED: programEnrollments → beneficiaryEnrollments
                 feedback: true,
               },
             },
@@ -71,6 +101,15 @@ export async function GET(
 
       if (!program) {
         return NextResponse.json({ error: 'Program not found' }, { status: 404 })
+      }
+
+      // ✅ CRITICAL: Filter enrollments by allowedTargetGroups
+      // Remove enrollments with targetGroup NOT in program.allowedTargetGroups
+      // This prevents showing orphaned enrollments from old target groups
+      if (program.beneficiaryEnrollments) {
+        program.beneficiaryEnrollments = program.beneficiaryEnrollments.filter(
+          enrollment => program.allowedTargetGroups.includes(enrollment.targetGroup)
+        )
       }
 
       return NextResponse.json({ success: true, data: program })
@@ -140,6 +179,9 @@ export async function PUT(
           { status: 400 }
         )
       }
+
+      // Note: Partner schools are now managed via ProgramSchoolEnrollment junction table
+      // Use the enrollment API endpoints to add/remove schools from programs
 
       // Update program
       const updatedProgram = await db.nutritionProgram.update({

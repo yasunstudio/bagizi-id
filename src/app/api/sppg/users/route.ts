@@ -142,6 +142,20 @@ export async function GET(request: NextRequest) {
               code: true,
               name: true,
             }
+          },
+          department: {
+            select: {
+              id: true,
+              departmentName: true,
+              departmentCode: true,
+            }
+          },
+          position: {
+            select: {
+              id: true,
+              positionName: true,
+              positionCode: true,
+            }
           }
         }
       })
@@ -237,8 +251,8 @@ export async function POST(request: NextRequest) {
           phone: validated.data.phone,
           firstName: validated.data.firstName,
           lastName: validated.data.lastName,
-          jobTitle: validated.data.jobTitle,
-          department: validated.data.department,
+          departmentId: validated.data.departmentId,
+          positionId: validated.data.positionId,
           timezone: validated.data.timezone || 'WIB',
           language: validated.data.language || 'id',
           isActive: validated.data.isActive !== undefined ? validated.data.isActive : true,
@@ -258,8 +272,8 @@ export async function POST(request: NextRequest) {
           updatedAt: true,
           firstName: true,
           lastName: true,
-          jobTitle: true,
-          department: true,
+          departmentId: true,
+          positionId: true,
           location: true,
           timezone: true,
           language: true,

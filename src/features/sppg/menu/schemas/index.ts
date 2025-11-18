@@ -6,7 +6,7 @@
  */
 
 import { z } from 'zod'
-import { MealType, InventoryCategory, MenuDifficulty, CookingMethod } from '@prisma/client'
+import { MealType, InventoryCategory, MenuDifficulty, CookingMethod, TargetGroup } from '@prisma/client'
 
 // ================================ ENUM SCHEMAS ================================
 
@@ -14,6 +14,7 @@ export const mealTypeSchema = z.nativeEnum(MealType)
 export const inventoryCategorySchema = z.nativeEnum(InventoryCategory)
 export const difficultySchema = z.nativeEnum(MenuDifficulty)
 export const cookingMethodSchema = z.nativeEnum(CookingMethod)
+export const targetGroupSchema = z.nativeEnum(TargetGroup)
 
 // ================================ CORE MENU SCHEMAS ================================
 
@@ -44,6 +45,12 @@ export const menuCreateSchema = z.object({
     .min(50, 'Ukuran porsi minimal 50 gram')
     .max(1000, 'Ukuran porsi maksimal 1000 gram')
     .int('Ukuran porsi harus berupa bilangan bulat'),
+  
+  // Food Category - Optional
+  foodCategoryId: z.string()
+    .cuid('Food Category ID harus valid')
+    .optional()
+    .nullable(),
   
   // Cost Information - Optional during creation
   costPerServing: z.number()
@@ -87,8 +94,103 @@ export const menuCreateSchema = z.object({
   isVegetarian: z.boolean().default(false),
   isVegan: z.boolean().default(false),
   
+  // ✅ NEW (Nov 7, 2025): Target Group Compatibility
+  // Empty array = universal menu (compatible with all target groups)
+  // Filled array = menu only compatible with specified target groups
+  compatibleTargetGroups: z.array(targetGroupSchema)
+    .default([])
+    .optional(),
+  
+  // ✅ NEW (Nov 7, 2025): Special Nutrients for Target-Specific Requirements
+  // Optional but REQUIRED for certain target groups (validated in refinement)
+  folicAcid: z.number()
+    .min(0, 'Asam folat tidak boleh negatif')
+    .max(10000, 'Nilai asam folat tidak realistis')
+    .optional()
+    .nullable(),
+  
+  iron: z.number()
+    .min(0, 'Zat besi tidak boleh negatif')
+    .max(1000, 'Nilai zat besi tidak realistis')
+    .optional()
+    .nullable(),
+  
+  calcium: z.number()
+    .min(0, 'Kalsium tidak boleh negatif')
+    .max(10000, 'Nilai kalsium tidak realistis')
+    .optional()
+    .nullable(),
+  
+  vitaminA: z.number()
+    .min(0, 'Vitamin A tidak boleh negatif')
+    .max(10000, 'Nilai vitamin A tidak realistis')
+    .optional()
+    .nullable(),
+  
+  vitaminC: z.number()
+    .min(0, 'Vitamin C tidak boleh negatif')
+    .max(10000, 'Nilai vitamin C tidak realistis')
+    .optional()
+    .nullable(),
+  
+  vitaminD: z.number()
+    .min(0, 'Vitamin D tidak boleh negatif')
+    .max(1000, 'Nilai vitamin D tidak realistis')
+    .optional()
+    .nullable(),
+  
   // Status
   isActive: z.boolean().default(true)
+})
+.refine((data) => {
+  // ✅ VALIDATION: Jika target PREGNANT_WOMAN, harus ada folicAcid, iron & calcium
+  if (data.compatibleTargetGroups?.includes('PREGNANT_WOMAN')) {
+    return data.folicAcid && data.iron && data.calcium
+  }
+  return true
+}, {
+  message: 'Menu untuk ibu hamil harus memiliki asam folat, zat besi, dan kalsium',
+  path: ['compatibleTargetGroups']
+})
+.refine((data) => {
+  // ✅ VALIDATION: Jika target TEENAGE_GIRL, harus ada iron minimum 15 mg
+  if (data.compatibleTargetGroups?.includes('TEENAGE_GIRL')) {
+    return data.iron && data.iron >= 15
+  }
+  return true
+}, {
+  message: 'Menu untuk remaja putri harus memiliki zat besi minimal 15 mg',
+  path: ['iron']
+})
+.refine((data) => {
+  // ✅ VALIDATION: Jika target ELDERLY, harus ada calcium & vitaminD
+  if (data.compatibleTargetGroups?.includes('ELDERLY')) {
+    return data.calcium && data.vitaminD
+  }
+  return true
+}, {
+  message: 'Menu untuk lansia harus memiliki kalsium dan vitamin D',
+  path: ['compatibleTargetGroups']
+})
+.refine((data) => {
+  // ✅ VALIDATION: Jika target TODDLER, harus ada vitaminA & vitaminD (anti-stunting)
+  if (data.compatibleTargetGroups?.includes('TODDLER')) {
+    return data.vitaminA && data.vitaminD
+  }
+  return true
+}, {
+  message: 'Menu untuk balita harus memiliki vitamin A dan vitamin D (anti-stunting)',
+  path: ['compatibleTargetGroups']
+})
+.refine((data) => {
+  // ✅ VALIDATION: Jika target BREASTFEEDING_MOTHER, harus ada vitaminA
+  if (data.compatibleTargetGroups?.includes('BREASTFEEDING_MOTHER')) {
+    return data.vitaminA
+  }
+  return true
+}, {
+  message: 'Menu untuk ibu menyusui harus memiliki vitamin A untuk produksi ASI',
+  path: ['vitaminA']
 })
 
 /**

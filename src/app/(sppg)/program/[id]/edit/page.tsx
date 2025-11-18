@@ -31,21 +31,23 @@ export default function ProgramEditPage({ params }: ProgramEditPageProps) {
 
   const handleUpdate = async (data: CreateProgramInput) => {
     try {
-      // Transform data to handle nullable fields - convert null to undefined
+      // ✅ SIMPLIFIED (Nov 11, 2025): Transform data to handle nullable fields
       const programData = {
         ...data,
         description: data.description ?? undefined,
-        calorieTarget: data.calorieTarget ?? undefined,
-        proteinTarget: data.proteinTarget ?? undefined,
-        carbTarget: data.carbTarget ?? undefined,
-        fatTarget: data.fatTarget ?? undefined,
-        fiberTarget: data.fiberTarget ?? undefined,
         endDate: data.endDate ?? undefined,
         totalBudget: data.totalBudget ?? undefined,
         budgetPerMeal: data.budgetPerMeal ?? undefined,
       }
+      
+      // Wait for update and cache refresh to complete
       await updateProgram({ id, data: programData })
+      
       toast.success('Program berhasil diperbarui')
+      
+      // Small delay to ensure cache is updated before navigation
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
       router.push(`/program/${id}`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Gagal memperbarui program')

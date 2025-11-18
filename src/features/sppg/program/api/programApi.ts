@@ -48,7 +48,7 @@ export const programApi = {
    * const result = await programApi.getAll({ status: 'ACTIVE' })
    * 
    * // Fetch by program type
-   * const result = await programApi.getAll({ programType: 'SCHOOL_FEEDING' })
+   * const result = await programApi.getAll({ programType: 'FREE_NUTRITIOUS_MEAL' })
    * ```
    */
   async getAll(
@@ -160,9 +160,9 @@ export const programApi = {
    * @example
    * ```typescript
    * const result = await programApi.create({
-   *   name: 'Program Makan Siang SD',
-   *   programType: 'SCHOOL_FEEDING',
-   *   targetGroup: 'PRIMARY_SCHOOL',
+   *   name: 'Program Makan Bergizi Gratis SD',
+   *   programType: 'FREE_NUTRITIOUS_MEAL',
+   *   allowedTargetGroups: ['SCHOOL_CHILDREN'],
    *   startDate: new Date('2025-01-01'),
    *   feedingDays: [1, 2, 3, 4, 5], // Monday-Friday
    *   mealsPerDay: 1,
@@ -282,7 +282,7 @@ export const programApi = {
    */
   async updateStatus(
     id: string,
-    status: 'ACTIVE' | 'INACTIVE' | 'COMPLETED' | 'DRAFT' | 'ARCHIVED',
+    status: 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'DRAFT' | 'ARCHIVED' | 'CANCELLED',
     headers?: HeadersInit
   ): Promise<ApiResponse<Program>> {
     return this.update(id, { status }, headers)

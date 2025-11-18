@@ -3,11 +3,20 @@
  * @version Next.js 15.5.4 / shadcn/ui / Enterprise-grade
  * @author Bagizi-ID Development Team
  * @see {@link /docs/copilot-instructions.md} Development Guidelines
+ * 
+ * HYDRATION SAFETY:
+ * - Uses client-side mounting flag to prevent hydration mismatch
+ * - DropdownMenu components with Radix UI generate random IDs
+ * - Random IDs differ between SSR and CSR causing hydration errors
+ * - Solution: Delay DropdownMenu render until after client mount
+ * - Maintains layout with skeleton during SSR
+ * 
+ * @see {@link https://react.dev/link/hydration-mismatch} React Hydration
  */
 
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { 
@@ -23,11 +32,22 @@ import {
   FileText,
   Settings,
   ChevronUp,
+  ChevronDown,
   LogOut,
   UserCog,
   Briefcase,
-  School,
   Activity,
+  Building,
+  Layers,
+  ClipboardList,
+  ShoppingBag,
+  PackageCheck,
+  CreditCard,
+  BarChart2,
+  Cog,
+  Bell,
+  MessageSquare,
+  Wallet,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -39,6 +59,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuBadge,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
   SidebarHeader,
   SidebarFooter,
   SidebarSeparator,
@@ -51,6 +74,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useAuth } from '@/hooks/use-auth'
 import { cn } from '@/lib/utils'
@@ -66,6 +94,15 @@ interface NavigationItem {
   icon: React.ComponentType<{ className?: string }>
   badge?: string | null
   resource?: string
+  children?: NavigationSubItem[]
+}
+
+interface NavigationSubItem {
+  title: string
+  href: string
+  icon?: React.ComponentType<{ className?: string }>
+  badge?: string | null
+  roles?: string[]
 }
 
 interface NavigationGroup {
@@ -76,7 +113,7 @@ interface NavigationGroup {
 // SPPG Navigation Items sesuai copilot instructions
 const sppgNavigation: NavigationGroup[] = [
   {
-    title: 'Overview',
+    title: 'Ringkasan',
     items: [
       {
         title: 'Dashboard',
@@ -87,104 +124,198 @@ const sppgNavigation: NavigationGroup[] = [
     ]
   },
   {
-    title: 'Program Management',
+    title: 'Manajemen Program',
     items: [
       {
-        title: 'Program',
+        title: 'Program Gizi',
         href: '/program',
         icon: Briefcase,
         badge: null,
         resource: 'program'
       },
       {
-        title: 'Schools',
-        href: '/schools',
-        icon: School,
+        title: 'Organisasi Penerima',
+        href: '/beneficiary-organizations',
+        icon: Building,
         badge: null,
-        resource: 'schools'
+        resource: 'beneficiary'
       }
     ]
   },
   {
-    title: 'Operations',
+    title: 'Operasional',
     items: [
       {
-        title: 'Menu Management',
+        title: 'Manajemen Menu',
         href: '/menu',
         icon: ChefHat,
         badge: null,
         resource: 'menu'
       },
       {
-        title: 'Menu Planning',
+        title: 'Perencanaan Menu',
         href: '/menu-planning',
         icon: Calendar,
         badge: null,
         resource: 'menu-planning'
       },
       {
-        title: 'Procurement',
+        title: 'Pengadaan',
         href: '/procurement',
         icon: ShoppingCart,
-        badge: '3', // Pending orders
-        resource: 'procurement'
+        badge: null, // Pending orders
+        resource: 'procurement',
+        children: [
+          {
+            title: 'Dashboard',
+            href: '/procurement',
+            icon: ClipboardList,
+            badge: null,
+            roles: ['SPPG_KEPALA', 'SPPG_ADMIN', 'SPPG_AKUNTAN', 'SPPG_STAFF']
+          },
+          {
+            title: 'Perencanaan',
+            href: '/procurement/plans',
+            icon: ClipboardList,
+            badge: null, // Pending approval count
+            roles: ['SPPG_KEPALA', 'SPPG_ADMIN', 'SPPG_AKUNTAN']
+          },
+          {
+            title: 'Purchase Orders',
+            href: '/procurement/orders',
+            icon: ShoppingBag,
+            badge: null, // Ordered count
+            roles: ['SPPG_KEPALA', 'SPPG_ADMIN', 'SPPG_AKUNTAN', 'SPPG_STAFF']
+          },
+          {
+            title: 'Penerimaan Barang',
+            href: '/procurement/receipts',
+            icon: PackageCheck,
+            badge: null, // Awaiting QC count
+            roles: ['SPPG_KEPALA', 'SPPG_ADMIN', 'SPPG_STAFF_QC', 'SPPG_STAFF']
+          },
+          {
+            title: 'Supplier',
+            href: '/procurement/suppliers',
+            icon: Building2,
+            badge: null,
+            roles: ['SPPG_KEPALA', 'SPPG_ADMIN', 'SPPG_AKUNTAN']
+          },
+          {
+            title: 'Pembayaran',
+            href: '/procurement/payments',
+            icon: CreditCard,
+            badge: null, // Overdue count
+            roles: ['SPPG_KEPALA', 'SPPG_ADMIN', 'SPPG_AKUNTAN']
+          },
+          {
+            title: 'Laporan',
+            href: '/procurement/reports',
+            icon: BarChart2,
+            badge: null,
+            roles: ['SPPG_KEPALA', 'SPPG_ADMIN', 'SPPG_AKUNTAN']
+          },
+          {
+            title: 'Pengaturan',
+            href: '/procurement/settings',
+            icon: Cog,
+            badge: null,
+            roles: ['SPPG_KEPALA', 'SPPG_ADMIN']
+          }
+        ]
       },
       {
-        title: 'Production',
+        title: 'Produksi',
         href: '/production',
         icon: Factory,
         badge: null,
         resource: 'production'
       },
       {
-        title: 'Distribution',
+        title: 'Distribusi',
         href: '/distribution',
         icon: Truck,
         badge: null,
         resource: 'distribution'
-      },
-      {
-        title: 'Suppliers',
-        href: '/suppliers',
-        icon: Building2,
-        badge: null,
-        resource: 'suppliers'
       }
     ]
   },
   {
-    title: 'Management',
+    title: 'Manajemen',
     items: [
       {
-        title: 'Inventory',
+        title: 'Inventori',
         href: '/inventory',
         icon: Package,
         badge: null,
         resource: 'inventory'
       },
       {
-        title: 'Stock Movements',
+        title: 'Pergerakan Stok',
         href: '/inventory/stock-movements',
         icon: Activity,
         badge: null,
         resource: 'inventory'
       },
       {
-        title: 'User Management',
+        title: 'Manajemen Pengguna',
         href: '/users',
         icon: UserCog,
         badge: null,
         resource: 'users'
       },
+    ]
+  },
+  {
+    title: 'Anggaran Pemerintah',
+    items: [
       {
-        title: 'HRD',
-        href: '/hrd',
-        icon: Users,
+        title: 'Permintaan Banper',
+        href: '/banper-tracking',
+        icon: Wallet,
+        badge: null,
+        resource: 'budget'
+      },
+      {
+        title: 'Transaksi Anggaran',
+        href: '/budget-transactions',
+        icon: CreditCard,
+        badge: null,
+        resource: 'budget'
+      }
+    ]
+  },
+  {
+    title: 'Sumber Daya Manusia',
+    items: [
+      {
+        title: 'Departemen',
+        href: '/hrd/departments',
+        icon: Building,
         badge: null,
         resource: 'hrd'
       },
       {
-        title: 'Reports',
+        title: 'Jabatan',
+        href: '/hrd/positions',
+        icon: Layers,
+        badge: null,
+        resource: 'hrd'
+      },
+      {
+        title: 'Karyawan',
+        href: '/hrd/employees',
+        icon: Users,
+        badge: null,
+        resource: 'hrd'
+      },
+    ]
+  },
+  {
+    title: 'Laporan & Analitik',
+    items: [
+      {
+        title: 'Laporan',
         href: '/reports',
         icon: FileText,
         badge: null,
@@ -193,14 +324,42 @@ const sppgNavigation: NavigationGroup[] = [
     ]
   },
   {
-    title: 'Settings',
+    title: 'Notifikasi',
     items: [
       {
-        title: 'SPPG Settings',
+        title: 'Log Notifikasi',
+        href: '/notifications/logs',
+        icon: Bell,
+        badge: null, // Can show unread count
+        resource: 'notifications'
+      }
+    ]
+  },
+  {
+    title: 'Pengaturan',
+    items: [
+      {
+        title: 'Pengaturan SPPG',
         href: '/settings',
         icon: Settings,
         badge: null,
-        resource: 'settings'
+        resource: 'settings',
+        children: [
+          {
+            title: 'General',
+            href: '/settings',
+            icon: Cog,
+            badge: null,
+            roles: ['SPPG_KEPALA', 'SPPG_ADMIN']
+          },
+          {
+            title: 'Notifications',
+            href: '/settings/notifications',
+            icon: MessageSquare,
+            badge: null,
+            roles: ['SPPG_KEPALA', 'SPPG_ADMIN']
+          }
+        ]
       }
     ]
   }
@@ -209,6 +368,17 @@ const sppgNavigation: NavigationGroup[] = [
 export function SppgSidebar({ className, onClose }: SppgSidebarProps) {
   const pathname = usePathname()
   const { user, canAccess, logout } = useAuth()
+  const [openProcurement, setOpenProcurement] = useState(
+    pathname.startsWith('/procurement')
+  )
+  
+  // Track client-side mounting to prevent hydration mismatch
+  // Enterprise Pattern: Delay rendering of components with random IDs
+  const [isMounted, setIsMounted] = useState(false)
+  
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   const handleLogout = async () => {
     try {
@@ -216,6 +386,13 @@ export function SppgSidebar({ className, onClose }: SppgSidebarProps) {
     } catch (error) {
       console.error('Logout error:', error)
     }
+  }
+
+  // Helper function to check if user has specific role
+  const hasRole = (allowedRoles?: string[]) => {
+    if (!allowedRoles || allowedRoles.length === 0) return true
+    if (!user?.userRole) return false
+    return allowedRoles.includes(user.userRole)
   }
 
   return (
@@ -257,6 +434,57 @@ export function SppgSidebar({ className, onClose }: SppgSidebarProps) {
 
                     const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
                     
+                    // Check if item has children (submenu)
+                    if (item.children && item.children.length > 0) {
+                      // Filter children based on user roles
+                      const allowedChildren = item.children.filter(child => hasRole(child.roles))
+                      
+                      if (allowedChildren.length === 0) return null
+                      
+                      return (
+                        <Collapsible
+                          key={item.href}
+                          open={openProcurement}
+                          onOpenChange={setOpenProcurement}
+                        >
+                          <SidebarMenuItem>
+                            <CollapsibleTrigger asChild>
+                              <SidebarMenuButton isActive={isActive}>
+                                <item.icon className="h-4 w-4" />
+                                <span>{item.title}</span>
+                                <ChevronDown className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
+                              </SidebarMenuButton>
+                            </CollapsibleTrigger>
+                            {item.badge && (
+                              <SidebarMenuBadge>{item.badge}</SidebarMenuBadge>
+                            )}
+                          </SidebarMenuItem>
+                          <CollapsibleContent>
+                            <SidebarMenuSub>
+                              {allowedChildren.map((subItem) => {
+                                const isSubActive = pathname === subItem.href || pathname.startsWith(subItem.href + '/')
+                                
+                                return (
+                                  <SidebarMenuSubItem key={subItem.href}>
+                                    <SidebarMenuSubButton asChild isActive={isSubActive}>
+                                      <Link href={subItem.href} onClick={onClose}>
+                                        {subItem.icon && <subItem.icon className="h-4 w-4" />}
+                                        <span>{subItem.title}</span>
+                                      </Link>
+                                    </SidebarMenuSubButton>
+                                    {subItem.badge && (
+                                      <SidebarMenuBadge>{subItem.badge}</SidebarMenuBadge>
+                                    )}
+                                  </SidebarMenuSubItem>
+                                )
+                              })}
+                            </SidebarMenuSub>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      )
+                    }
+                    
+                    // Regular menu item without submenu
                     return (
                       <SidebarMenuItem key={item.href}>
                         <SidebarMenuButton asChild isActive={isActive}>
@@ -284,43 +512,63 @@ export function SppgSidebar({ className, onClose }: SppgSidebarProps) {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton size="lg">
-                  <Avatar className="h-8 w-8 rounded-lg">
-                    <AvatarImage src={user?.avatar || ''} alt={user?.name || ''} />
-                    <AvatarFallback className="rounded-lg bg-primary text-primary-foreground">
-                      {user?.name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">
-                      {user?.name || 'User'}
-                    </span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {user?.email || 'user@sppg.id'}
-                    </span>
-                  </div>
-                  <ChevronUp className="ml-auto size-4" />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-                side="top"
-                align="end"
-                sideOffset={4}
-              >
-                <DropdownMenuItem>
-                  <UserCog className="mr-2 size-4" />
-                  <span>Profile Settings</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout}>
-                  <LogOut className="mr-2 size-4" />
-                  <span>Log out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* Only render DropdownMenu after client-side mount to prevent hydration mismatch */}
+            {isMounted ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <SidebarMenuButton size="lg">
+                    <Avatar className="h-8 w-8 rounded-lg">
+                      <AvatarImage src={user?.avatar || ''} alt={user?.name || ''} />
+                      <AvatarFallback className="rounded-lg bg-primary text-primary-foreground">
+                        {user?.name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <span className="truncate font-semibold">
+                        {user?.name || 'User'}
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {user?.email || 'user@sppg.id'}
+                      </span>
+                    </div>
+                    <ChevronUp className="ml-auto size-4" />
+                  </SidebarMenuButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+                  side="top"
+                  align="end"
+                  sideOffset={4}
+                >
+                  <DropdownMenuItem>
+                    <UserCog className="mr-2 size-4" />
+                    <span>Profile Settings</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout}>
+                    <LogOut className="mr-2 size-4" />
+                    <span>Log out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              // Skeleton/placeholder during SSR to maintain layout
+              <SidebarMenuButton size="lg">
+                <Avatar className="h-8 w-8 rounded-lg">
+                  <AvatarFallback className="rounded-lg bg-primary text-primary-foreground">
+                    {user?.name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">
+                    {user?.name || 'User'}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {user?.email || 'user@sppg.id'}
+                  </span>
+                </div>
+              </SidebarMenuButton>
+            )}
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

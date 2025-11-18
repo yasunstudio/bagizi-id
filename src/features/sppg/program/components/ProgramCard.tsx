@@ -22,7 +22,6 @@ import {
   Calendar, 
   Users, 
   DollarSign, 
-  Target,
   TrendingUp,
   MoreVertical,
   Edit,
@@ -41,6 +40,8 @@ import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 import { id as localeId } from 'date-fns/locale'
 import type { Program } from '../types'
+import { ProgramTypeDisplay } from './ProgramTypeDisplay'
+import { TargetGroupConfigBadge } from './TargetGroupConfigBadge'
 
 interface ProgramCardProps {
   program: Program
@@ -78,26 +79,13 @@ export const ProgramCard: FC<ProgramCardProps> = ({
   // Program type label
   const getProgramTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
-      SUPPLEMENTARY_FEEDING: 'Pemberian Makanan Tambahan',
       NUTRITIONAL_RECOVERY: 'Pemulihan Gizi',
       NUTRITIONAL_EDUCATION: 'Edukasi Gizi',
-      EMERGENCY_NUTRITION: 'Gizi Darurat',
+      FREE_NUTRITIOUS_MEAL: 'Makan Bergizi Gratis',
+      EMERGENCY_NUTRITION: 'Nutrisi Darurat',
       STUNTING_INTERVENTION: 'Intervensi Stunting',
     }
     return labels[type] || type
-  }
-
-  // Target group label
-  const getTargetGroupLabel = (group: string) => {
-    const labels: Record<string, string> = {
-      TODDLER: 'Balita',
-      SCHOOL_CHILDREN: 'Anak Sekolah',
-      TEENAGE_GIRL: 'Remaja Putri',
-      PREGNANT_WOMAN: 'Ibu Hamil',
-      BREASTFEEDING_MOTHER: 'Ibu Menyusui',
-      ELDERLY: 'Lansia',
-    }
-    return labels[group] || group
   }
 
   // Calculate progress percentage
@@ -190,10 +178,25 @@ export const ProgramCard: FC<ProgramCardProps> = ({
               </p>
             </div>
             <div className="space-y-1">
-              <span className="text-muted-foreground">Target Kelompok</span>
-              <p className="font-medium text-foreground">
-                {program.targetGroup ? getTargetGroupLabel(program.targetGroup) : '-'}
-              </p>
+              <span className="text-muted-foreground">Konfigurasi Target</span>
+              <div className="flex flex-col gap-1">
+                {/* ✅ SIMPLIFIED (Nov 11, 2025): Removed isMultiTarget prop */}
+                <ProgramTypeDisplay
+                  allowedTargetGroups={program.allowedTargetGroups ?? []}
+                  variant="badge"
+                  showTooltip={false}
+                  showIcon={true}
+                />
+                
+                {/* Show badges for target groups (always shown if length > 1) */}
+                {program.allowedTargetGroups && program.allowedTargetGroups.length > 1 && (
+                  <TargetGroupConfigBadge
+                    targetGroups={program.allowedTargetGroups}
+                    variant="outline"
+                    maxDisplay={2}
+                  />
+                )}
+              </div>
             </div>
           </div>
 
@@ -270,35 +273,9 @@ export const ProgramCard: FC<ProgramCardProps> = ({
             </div>
           )}
 
-          {/* Nutrition Goals */}
-          {(program.calorieTarget || program.proteinTarget) && variant === 'default' && (
-            <div className="pt-3 border-t">
-              <p className="text-xs font-medium text-muted-foreground mb-2">Target Gizi Harian</p>
-              <div className="flex flex-wrap gap-2">
-                {program.calorieTarget && (
-                  <Badge variant="outline" className="text-xs">
-                    <Target className="mr-1 h-3 w-3" />
-                    {program.calorieTarget} kkal
-                  </Badge>
-                )}
-                {program.proteinTarget && (
-                  <Badge variant="outline" className="text-xs">
-                    {program.proteinTarget}g protein
-                  </Badge>
-                )}
-                {program.carbTarget && (
-                  <Badge variant="outline" className="text-xs">
-                    {program.carbTarget}g karbo
-                  </Badge>
-                )}
-                {program.fatTarget && (
-                  <Badge variant="outline" className="text-xs">
-                    {program.fatTarget}g lemak
-                  </Badge>
-                )}
-              </div>
-            </div>
-          )}
+          {/* ❌ REMOVED (Phase 4 - Nov 8, 2025): Nutrition targets now from NutritionStandard */}
+          {/* Use ProgramNutritionTab for detailed nutrition display */}
+          {/* See: /src/lib/nutrition-helpers.ts for getProgramNutritionSummary() */}
         </div>
       </CardContent>
 

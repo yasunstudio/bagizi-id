@@ -1,0 +1,61 @@
+/**
+ * @fileoverview Employee Detail Page
+ * @module app/(sppg)/hrd/employees/[id]
+ * @description Page for viewing employee details
+ * 
+ * @version Next.js 15.5.4
+ * @author Bagizi-ID Development Team
+ */
+
+'use client'
+
+import { use } from 'react'
+
+import { Suspense } from 'react'
+import { EmployeeDetail } from '@/features/sppg/hrd/components'
+import { ChevronLeft } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
+import Link from 'next/link'
+
+function EmployeeDetailSkeleton() {
+  return (
+    <div className="space-y-6">
+      <Skeleton className="h-48 w-full" />
+      <Skeleton className="h-96 w-full" />
+    </div>
+  )
+}
+
+function EmployeeDetailPage({
+  params 
+}: { 
+  params: Promise<{ id: string }> 
+}) {
+  const unwrappedParams = use(params)
+  const id = unwrappedParams.id
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" asChild>
+          <Link href="/hrd/employees">
+            <ChevronLeft className="h-4 w-4" />
+          </Link>
+        </Button>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Detail Karyawan</h1>
+          <p className="text-muted-foreground">
+            Informasi lengkap dan riwayat karyawan
+          </p>
+        </div>
+      </div>
+
+      <Suspense fallback={<EmployeeDetailSkeleton />}>
+        <EmployeeDetail employeeId={id} />
+      </Suspense>
+    </div>
+  )
+}
+
+export default EmployeeDetailPage

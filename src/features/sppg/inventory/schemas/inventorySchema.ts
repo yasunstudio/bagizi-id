@@ -36,6 +36,12 @@ export const createInventorySchema = z.object({
   
   category: inventoryCategorySchema,
   
+  foodCategoryId: z
+    .string()
+    .cuid('ID kategori makanan tidak valid')
+    .optional()
+    .nullable(),
+  
   unit: z
     .string()
     .min(1, 'Satuan wajib diisi')

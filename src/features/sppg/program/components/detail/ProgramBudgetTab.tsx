@@ -1,16 +1,22 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { DollarSign, TrendingUp, AlertCircle } from 'lucide-react'
-import { formatCurrency } from '@/features/sppg/program/lib/programUtils'
+import { Badge } from '@/components/ui/badge'
+import { DollarSign, TrendingUp, AlertCircle, FileText, ExternalLink } from 'lucide-react'
+import { formatCurrency, formatNumberWithSeparator } from '@/features/sppg/program/lib/programUtils'
 import type { Program } from '@/features/sppg/program/types/program.types'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 
 interface ProgramBudgetTabProps {
   program: Program
 }
 
 export function ProgramBudgetTab({ program }: ProgramBudgetTabProps) {
+  const router = useRouter()
+  
   const monthlyProjection = 
     program.budgetPerMeal && program.feedingDays && program.feedingDays.length > 0
       ? program.budgetPerMeal * program.mealsPerDay * program.feedingDays.length * 4 * program.currentRecipients
@@ -37,6 +43,82 @@ export function ProgramBudgetTab({ program }: ProgramBudgetTabProps) {
 
   return (
     <div className="space-y-4 mt-4">
+      {/* BANPER Funding Section */}
+      {program.budgetSource === 'APBN_PUSAT' && (
+        <Alert>
+          <FileText className="h-4 w-4" />
+          <AlertDescription>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <p className="font-semibold">Sumber Anggaran: APBN Pusat</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Program ini menggunakan anggaran dari pemerintah pusat. Anda dapat mengajukan 
+                  permintaan BANPER melalui Portal BGN untuk mendapatkan alokasi dana.
+                </p>
+              </div>
+              <Button
+                onClick={() => router.push(`/banper-tracking/new?programId=${program.id}`)}
+                className="shrink-0"
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Ajukan BANPER
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {program.budgetSource && program.budgetSource !== 'APBN_PUSAT' && (
+        <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg">Sumber Anggaran</CardTitle>
+                <CardDescription>
+                  {program.budgetSource === 'APBD_PROVINSI' && 'APBD Provinsi'}
+                  {program.budgetSource === 'APBD_KABUPATEN' && 'APBD Kabupaten'}
+                  {program.budgetSource === 'APBD_KOTA' && 'APBD Kota'}
+                  {program.budgetSource === 'HIBAH' && 'Hibah'}
+                  {program.budgetSource === 'APBN_DEKONSENTRASI' && 'APBN Dekonsentrasi'}
+                  {program.budgetSource === 'DAK' && 'Dana Alokasi Khusus (DAK)'}
+                  {program.budgetSource === 'MIXED' && 'Campuran (Multi-Sumber)'}
+                </CardDescription>
+              </div>
+              <Badge variant="outline" className="text-sm">
+                {program.budgetSource}
+              </Badge>
+            </div>
+          </CardHeader>
+          {(program.dpaNumber || program.budgetDecreeNumber) && (
+            <CardContent className="space-y-2 text-sm">
+              {program.dpaNumber && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Nomor DPA:</span>
+                  <span className="font-mono font-semibold">{program.dpaNumber}</span>
+                </div>
+              )}
+              {program.budgetDecreeNumber && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">SK Anggaran:</span>
+                  <span className="font-mono font-semibold">{program.budgetDecreeNumber}</span>
+                </div>
+              )}
+              {program.budgetDecreeUrl && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => window.open(program.budgetDecreeUrl!, '_blank')}
+                  className="w-full justify-between"
+                >
+                  Lihat Dokumen SK
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              )}
+            </CardContent>
+          )}
+        </Card>
+      )}
+
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader>
@@ -99,7 +181,7 @@ export function ProgramBudgetTab({ program }: ProgramBudgetTabProps) {
                   {formatCurrency(monthlyProjection)}
                 </p>
                 <p className="text-sm text-muted-foreground mt-2">
-                  Untuk {program.currentRecipients} penerima saat ini
+                  Untuk {formatNumberWithSeparator(program.currentRecipients)} penerima saat ini
                 </p>
               </>
             ) : (

@@ -13,6 +13,8 @@ export * from './useRecipeSteps'
 export * from './useNutrition'
 export * from './useCost'
 export * from './useDuplicateMenu'
+export * from './useMenuPlans'
+export * from './useFoodCategories'
 
 // Import dependencies for legacy hooks defined in this file
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'

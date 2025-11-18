@@ -51,7 +51,8 @@ export const usersApi = {
    */
   async getAll(role?: UserRole | string, headers?: HeadersInit): Promise<ApiResponse<UserData[]>> {
     const baseUrl = getBaseUrl()
-    const url = role ? `${baseUrl}/api/sppg/users?role=${role}` : `${baseUrl}/api/sppg/users`
+    // Use 'userRole' param name to match API endpoint expectation
+    const url = role ? `${baseUrl}/api/sppg/users?userRole=${role}` : `${baseUrl}/api/sppg/users`
     const response = await fetch(url, getFetchOptions(headers))
 
     if (!response.ok) {
@@ -91,9 +92,10 @@ export const usersApi = {
   ): Promise<ApiResponse<UserData[]>> {
     const params = new URLSearchParams()
 
-    if (options?.role) params.append('role', options.role)
+    // Use 'userRole' param name to match API endpoint expectation
+    if (options?.role) params.append('userRole', options.role)
     if (options?.search) params.append('search', options.search)
-    if (options?.status) params.append('status', options.status)
+    if (options?.status) params.append('isActive', options.status === 'active' ? 'true' : 'false')
 
     const baseUrl = getBaseUrl()
     const url = `${baseUrl}/api/sppg/users${params.toString() ? `?${params.toString()}` : ''}`

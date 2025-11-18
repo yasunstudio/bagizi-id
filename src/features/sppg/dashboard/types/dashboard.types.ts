@@ -17,9 +17,10 @@ export interface DashboardStats {
     percentage?: number
   }
   totalBeneficiaries: {
-    current: number
-    schools: number
-    newSchools: number
+    current: number // Total members from all organizations
+    organizations: number // Total number of beneficiary organizations
+    newOrganizations: number // New organizations this week
+    byType?: Record<string, number> // Count by organization type (SD, SMP, POSYANDU, etc)
     percentage: number
     change?: number
     trend?: 'up' | 'down' | 'stable'

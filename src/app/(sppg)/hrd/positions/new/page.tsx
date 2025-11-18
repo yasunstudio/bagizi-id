@@ -1,0 +1,62 @@
+/**
+ * @fileoverview Create Position Page
+ * Form for creating new position
+ * @version Next.js 15.5.4
+ * @author Bagizi-ID Development Team
+ * @see {@link /docs/copilot-instructions.md} Development Guidelines
+ */
+
+'use client'
+
+import Link from 'next/link'
+
+import { PositionForm } from '@/features/sppg/hrd/components/PositionForm'
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb'
+
+
+function NewPositionPage() {
+  return (
+    <div className="container mx-auto py-6 space-y-6">
+      {/* Breadcrumb */}
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild><Link href="/dashboard">Dashboard</Link></BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild><Link href="/hrd">HRD</Link></BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild><Link href="/hrd/positions">Posisi</Link></BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>Buat Baru</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+
+      {/* Page Header */}
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Buat Posisi Baru</h1>
+        <p className="text-muted-foreground mt-2">
+          Tambahkan posisi jabatan baru untuk struktur organisasi Anda
+        </p>
+      </div>
+
+      {/* Position Form */}
+      <PositionForm mode="create" />
+    </div>
+  )
+}
+
+export default NewPositionPage

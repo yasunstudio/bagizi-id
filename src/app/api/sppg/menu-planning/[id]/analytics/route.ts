@@ -34,7 +34,7 @@ export async function GET(
               id: true,
               name: true,
               targetRecipients: true,
-              targetGroup: true
+              allowedTargetGroups: true,
             }
           },
           assignments: {
@@ -248,7 +248,7 @@ export async function GET(
           program: {
             name: plan.program.name,
             targetBeneficiaries: plan.program.targetRecipients,
-            targetGroup: plan.program.targetGroup
+            targetGroups: plan.program.allowedTargetGroups
           },
           nutrition: {
             byMealType: nutritionAverages,

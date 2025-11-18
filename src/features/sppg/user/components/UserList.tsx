@@ -187,12 +187,13 @@ export function UserList() {
       },
     },
     {
-      accessorKey: 'jobTitle',
-      header: 'Jabatan',
+      accessorKey: 'position',
+      header: 'Posisi',
       cell: ({ row }) => {
+        const position = row.original.position
         return (
           <div className="text-sm">
-            {row.getValue('jobTitle') || '-'}
+            {position?.positionName || '-'}
           </div>
         )
       },
@@ -201,9 +202,10 @@ export function UserList() {
       accessorKey: 'department',
       header: 'Departemen',
       cell: ({ row }) => {
+        const department = row.original.department
         return (
           <div className="text-sm">
-            {row.getValue('department') || '-'}
+            {department?.departmentName || '-'}
           </div>
         )
       },

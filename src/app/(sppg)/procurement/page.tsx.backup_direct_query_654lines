@@ -1,0 +1,654 @@
+/**
+ * @fileoverview Procurement Dashboard - Business Process Overview
+ * @version Next.js 15.5.4 / Auth.js v5 / Prisma 6.17.1
+ * @author Bagizi-ID Development Team
+ * @see {@link /docs/PROCUREMENT_NAVIGATION_IMPLEMENTATION.md} Navigation Structure
+ * @see {@link /docs/copilot-instructions.md} Development Guidelines
+ * 
+ * ARCHITECTURE: Business Process View (Option A)
+ * - Dashboard as overview/entry point
+ * - Sub-modules for workflow steps:
+ *   1. Planning   → /procurement/plans
+ *   2. Ordering   → /procurement/orders (main workflow)
+ *   3. Receiving  → /procurement/receipts
+ *   4. Supplier   → /procurement/suppliers
+ *   5. Payment    → /procurement/payments (placeholder)
+ *   6. Reports    → /procurement/reports (placeholder)
+ * 
+ * ENTERPRISE-GRADE FEATURES:
+ * - Server Component with SSR
+ * - Authentication & Authorization (RBAC)
+ * - Multi-tenant data isolation (sppgId filtering)
+ * - Real-time statistics
+ * - Quick action buttons
+ * - Recent activities feed
+ * - Pending approvals
+ * - Low stock alerts
+ * - Upcoming deliveries
+ * - Dark mode support
+ * - SEO optimization
+ */
+
+import { Metadata } from 'next'
+import { redirect } from 'next/navigation'
+import { auth } from '@/auth'
+import { checkSppgAccess } from '@/lib/permissions'
+import { 
+  ProcurementStats,
+  RecentActivities,
+  PendingApprovals,
+  LowStockAlerts,
+  UpcomingDeliveries,
+  QuickActionsGrid
+} from '@/features/sppg/procurement/dashboard/components'
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb'
+import { Separator } from '@/components/ui/separator'
+import { ShoppingCart, Home } from 'lucide-react'
+
+// ================================ METADATA ================================
+
+export const metadata: Metadata = {
+  title: 'Procurement Dashboard | Bagizi SPPG',
+  description: 'Dashboard overview untuk manajemen pengadaan bahan baku SPPG. Monitor status pembelian, approval, delivery, dan payment secara real-time.',
+  keywords: [
+    'procurement dashboard',
+    'pengadaan SPPG',
+    'procurement overview',
+    'purchase order monitoring',
+    'procurement analytics',
+    'supplier management dashboard'
+  ],
+  openGraph: {
+    title: 'Procurement Dashboard - Bagizi SPPG',
+    description: 'Monitor dan kelola seluruh proses procurement SPPG',
+    type: 'website',
+  },
+}
+
+// ================================ MAIN COMPONENT ================================
+
+/**
+ * Procurement Dashboard Page (Server Component)
+ * 
+ * Purpose: Entry point untuk procurement module dengan overview lengkap
+ * 
+ * Business Process Flow:
+ * 1. User lands on dashboard → Lihat stats & recent activities
+ * 2. Click "Perencanaan" → /procurement/plans (planning & budgeting)
+ * 3. Click "Purchase Orders" → /procurement/orders (main procurement list)
+ * 4. Click "Penerimaan Barang" → /procurement/receipts (receiving & QC)
+ * 5. Click "Supplier" → /procurement/suppliers (supplier management)
+ * 6. Click "Pembayaran" → /procurement/payments (payment tracking)
+ * 7. Click "Laporan" → /procurement/reports (analytics & reports)
+ * 
+ * Features:
+ * - Real-time procurement statistics
+ * - Pending approvals count
+ * - Recent activities timeline
+ * - Low stock alerts
+ * - Upcoming deliveries schedule
+ * - Quick action buttons to sub-modules
+ */
+export default async function ProcurementDashboardPage() {
+  // ================================ AUTHENTICATION ================================
+  
+  const session = await auth()
+  
+  if (!session?.user) {
+    redirect('/login')
+  }
+
+  // ================================ AUTHORIZATION ================================
+  
+  const userRole = session.user.userRole
+  const sppgId = session.user.sppgId
+
+  if (!sppgId) {
+    redirect('/access-denied?reason=no_sppg')
+  }
+
+  // Verify SPPG access
+  const sppg = await checkSppgAccess(sppgId)
+  if (!sppg) {
+    redirect('/access-denied?reason=invalid_sppg')
+  }
+
+  // Check if user has procurement access
+  const canAccessProcurement = [
+    'SPPG_KEPALA',
+    'SPPG_ADMIN',
+    'SPPG_AKUNTAN',
+    'SPPG_PRODUKSI_MANAGER',
+    'SPPG_STAFF',
+    'SPPG_STAFF_QC'
+  ].includes(userRole || '')
+
+  if (!canAccessProcurement) {
+    redirect('/access-denied?reason=insufficient_permissions')
+  }
+
+  // ================================ RENDER ================================
+
+  return (
+    <div className="container mx-auto py-6 space-y-6">
+      {/* Breadcrumb Navigation */}
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink href="/dashboard">
+              <Home className="h-4 w-4" />
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage className="flex items-center gap-2">
+              <ShoppingCart className="h-4 w-4" />
+              Procurement Dashboard
+            </BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+
+      {/* Page Header */}
+      <div className="space-y-2">
+        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+          <ShoppingCart className="h-8 w-8 text-primary" />
+          Procurement Dashboard
+        </h1>
+        <p className="text-muted-foreground">
+          Monitor dan kelola seluruh proses pengadaan bahan baku untuk {sppg.sppgName}
+        </p>
+      </div>
+
+      <Separator />
+
+      {/* Statistics Cards */}
+      <ProcurementStats sppgId={sppgId} />
+
+      {/* Quick Actions Grid */}
+      <QuickActionsGrid userRole={userRole} />
+
+      <Separator />
+
+      {/* Main Content Grid */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Left Column */}
+        <div className="space-y-6">
+          {/* Pending Approvals */}
+          <PendingApprovals sppgId={sppgId} userRole={userRole} />
+
+          {/* Low Stock Alerts */}
+          <LowStockAlerts sppgId={sppgId} />
+        </div>
+
+        {/* Right Column */}
+        <div className="space-y-6">
+          {/* Recent Activities */}
+          <RecentActivities sppgId={sppgId} />
+
+          {/* Upcoming Deliveries */}
+          <UpcomingDeliveries sppgId={sppgId} />
+        </div>
+      </div>
+
+      {/* Footer Info */}
+      <div className="mt-8 p-4 bg-muted/50 dark:bg-muted/20 rounded-lg border border-border/50">
+        <div className="flex items-start gap-3">
+          <ShoppingCart className="h-5 w-5 text-muted-foreground mt-0.5" />
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Procurement Workflow</p>
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium">Planning</span> → Buat rencana pengadaan dengan alokasi budget
+              {' • '}
+              <span className="font-medium">Ordering</span> → Generate purchase orders dari planning
+              {' • '}
+              <span className="font-medium">Receiving</span> → Quality control dan penerimaan barang
+              {' • '}
+              <span className="font-medium">Payment</span> → Track status pembayaran dan jatuh tempo
+            </p>
+          </div>          /**
+           * @fileoverview Procurement Dashboard - Business Process Overview
+           * @version Next.js 15.5.4 / Auth.js v5 / Prisma 6.17.1
+           * @author Bagizi-ID Development Team
+           * @see {@link /docs/PROCUREMENT_NAVIGATION_IMPLEMENTATION.md} Navigation Structure
+           * @see {@link /docs/copilot-instructions.md} Development Guidelines
+           * 
+           * ARCHITECTURE: Business Process View (Option A)
+           * - Dashboard as overview/entry point
+           * - Sub-modules for workflow steps:
+           *   1. Planning   → /procurement/plans
+           *   2. Ordering   → /procurement/orders (main workflow)
+           *   3. Receiving  → /procurement/receipts
+           *   4. Supplier   → /procurement/suppliers
+           *   5. Payment    → /procurement/payments (placeholder)
+           *   6. Reports    → /procurement/reports (placeholder)
+           * 
+           * ENTERPRISE-GRADE FEATURES:
+           * - Server Component with SSR
+           * - Authentication & Authorization (RBAC)
+           * - Multi-tenant data isolation (sppgId filtering)
+           * - Real-time statistics
+           * - Quick action buttons
+           * - Recent activities feed
+           * - Pending approvals
+           * - Low stock alerts
+           * - Upcoming deliveries
+           * - Dark mode support
+           * - SEO optimization
+           */
+          
+          import { Metadata } from 'next'
+          import { redirect } from 'next/navigation'
+          import { auth } from '@/auth'
+          import { db } from '@/lib/prisma'
+          import { checkSppgAccess } from '@/lib/permissions'
+          import { 
+            ProcurementStats,
+            RecentActivities,
+            PendingApprovals,
+            LowStockAlerts,
+            UpcomingDeliveries,
+            QuickActionsGrid
+          } from '@/features/sppg/procurement/dashboard/components'
+          import {
+            Breadcrumb,
+            BreadcrumbItem,
+            BreadcrumbLink,
+            BreadcrumbList,
+            BreadcrumbPage,
+            BreadcrumbSeparator,
+          } from '@/components/ui/breadcrumb'
+          import { Separator } from '@/components/ui/separator'
+          import { ShoppingCart, Home } from 'lucide-react'
+          
+          // ================================ METADATA ================================
+          
+          export const metadata: Metadata = {
+            title: 'Procurement Dashboard | Bagizi SPPG',
+            description: 'Dashboard overview untuk manajemen pengadaan bahan baku SPPG. Monitor status pembelian, approval, delivery, dan payment secara real-time.',
+            keywords: [
+              'procurement dashboard',
+              'pengadaan SPPG',
+              'procurement overview',
+              'purchase order monitoring',
+              'procurement analytics',
+              'supplier management dashboard'
+            ],
+            openGraph: {
+              title: 'Procurement Dashboard - Bagizi SPPG',
+              description: 'Monitor dan kelola seluruh proses procurement SPPG',
+              type: 'website',
+            },
+          }
+          
+          // ================================ HELPER FUNCTIONS ================================
+          
+          /**
+           * Fetch procurement statistics for dashboard
+           */
+          async function getProcurementStats(sppgId: string) {
+            // Get orders stats
+            const [totalOrders, pendingOrders, approvedOrders, completedOrders] = await Promise.all([
+              db.procurement.count({ where: { sppgId } }),
+              db.procurement.count({ where: { sppgId, status: 'PENDING_APPROVAL' } }),
+              db.procurement.count({ where: { sppgId, status: 'APPROVED' } }),
+              db.procurement.count({ where: { sppgId, status: 'COMPLETED' } }),
+            ])
+          
+            const thisMonthOrders = await db.procurement.count({
+              where: {
+                sppgId,
+                procurementDate: {
+                  gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+                }
+              }
+            })
+          
+            const totalValue = await db.procurement.aggregate({
+              where: { sppgId },
+              _sum: { totalAmount: true }
+            })
+          
+            // Get plans stats
+            const [totalPlans, activePlans, completedPlans] = await Promise.all([
+              db.procurementPlan.count({ where: { sppgId } }),
+              db.procurementPlan.count({ where: { sppgId, status: 'ACTIVE' } }),
+              db.procurementPlan.count({ where: { sppgId, status: 'COMPLETED' } }),
+            ])
+          
+            const budgetAgg = await db.procurementPlan.aggregate({
+              where: { sppgId },
+              _sum: {
+                totalBudget: true,
+                usedBudget: true,
+                remainingBudget: true
+              }
+            })
+          
+            // Get suppliers stats
+            const [totalSuppliers, activeSuppliers, preferredSuppliers] = await Promise.all([
+              db.supplier.count({ where: { sppgId } }),
+              db.supplier.count({ where: { sppgId, status: 'ACTIVE' } }),
+              db.supplier.count({ where: { sppgId, status: 'ACTIVE', isPreferred: true } }),
+            ])
+          
+            const newSuppliers = await db.supplier.count({
+              where: {
+                sppgId,
+                createdAt: {
+                  gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+                }
+              }
+            })
+          
+            return {
+              orders: {
+                total: totalOrders,
+                pending: pendingOrders,
+                approved: approvedOrders,
+                completed: completedOrders,
+                totalValue: totalValue._sum.totalAmount || 0,
+                thisMonth: thisMonthOrders
+              },
+              plans: {
+                total: totalPlans,
+                active: activePlans,
+                completed: completedPlans,
+                totalBudget: budgetAgg._sum.totalBudget || 0,
+                usedBudget: budgetAgg._sum.usedBudget || 0,
+                remainingBudget: budgetAgg._sum.remainingBudget || 0
+              },
+              suppliers: {
+                total: totalSuppliers,
+                active: activeSuppliers,
+                preferred: preferredSuppliers,
+                newThisMonth: newSuppliers
+              }
+            }
+          }
+          
+          /**
+           * Fetch pending approvals
+           */
+          async function getPendingApprovals(sppgId: string) {
+            return await db.procurement.findMany({
+              where: {
+                sppgId,
+                status: 'PENDING_APPROVAL'
+              },
+              select: {
+                id: true,
+                procurementCode: true,
+                procurementDate: true,
+                totalAmount: true,
+                supplier: {
+                  select: {
+                    supplierName: true
+                  }
+                }
+              },
+              orderBy: {
+                procurementDate: 'desc'
+              },
+              take: 5
+            })
+          }
+          
+          /**
+           * Fetch recent activities
+           */
+          async function getRecentActivities(sppgId: string) {
+            return await db.procurement.findMany({
+              where: { sppgId },
+              select: {
+                id: true,
+                procurementCode: true,
+                status: true,
+                totalAmount: true,
+                createdAt: true,
+                supplier: {
+                  select: {
+                    supplierName: true
+                  }
+                }
+              },
+              orderBy: {
+                createdAt: 'desc'
+              },
+              take: 10
+            })
+          }
+          
+          /**
+           * Fetch low stock alerts
+           */
+          async function getLowStockAlerts(sppgId: string) {
+            return await db.inventoryItem.findMany({
+              where: {
+                sppgId,
+                isActive: true,
+                currentStock: {
+                  lte: db.inventoryItem.fields.minimumStock // Low stock items
+                }
+              },
+              select: {
+                id: true,
+                itemName: true,
+                currentStock: true,
+                minimumStock: true,
+                unit: true,
+                category: true
+              },
+              orderBy: {
+                currentStock: 'asc'
+              },
+              take: 10
+            })
+          }
+          
+          /**
+           * Fetch upcoming deliveries
+           */
+          async function getUpcomingDeliveries(sppgId: string) {
+            const today = new Date()
+            const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000)
+          
+            return await db.procurement.findMany({
+              where: {
+                sppgId,
+                status: {
+                  in: ['APPROVED', 'ORDERED']
+                },
+                expectedDelivery: {
+                  gte: today,
+                  lte: nextWeek
+                }
+              },
+              select: {
+                id: true,
+                procurementCode: true,
+                expectedDelivery: true,
+                totalAmount: true,
+                deliveryStatus: true,
+                supplier: {
+                  select: {
+                    supplierName: true
+                  }
+                }
+              },
+              orderBy: {
+                expectedDelivery: 'asc'
+              },
+              take: 10
+            })
+          }
+          
+          // ================================ MAIN COMPONENT ================================
+          
+          /**
+           * Procurement Dashboard Page (Server Component)
+           * 
+           * Purpose: Entry point untuk procurement module dengan overview lengkap
+           * 
+           * Business Process Flow:
+           * 1. User lands on dashboard → Lihat stats & recent activities
+           * 2. Click "Perencanaan" → /procurement/plans (planning & budgeting)
+           * 3. Click "Purchase Orders" → /procurement/orders (main procurement list)
+           * 4. Click "Penerimaan Barang" → /procurement/receipts (receiving & QC)
+           * 5. Click "Supplier" → /procurement/suppliers (supplier management)
+           * 6. Click "Pembayaran" → /procurement/payments (payment tracking)
+           * 7. Click "Laporan" → /procurement/reports (analytics & reports)
+           * 
+           * Features:
+           * - Real-time procurement statistics
+           * - Pending approvals count
+           * - Recent activities timeline
+           * - Low stock alerts
+           * - Upcoming deliveries schedule
+           * - Quick action buttons to sub-modules
+           */
+          export default async function ProcurementDashboardPage() {
+            // ================================ AUTHENTICATION ================================
+            
+            const session = await auth()
+            
+            if (!session?.user) {
+              redirect('/login')
+            }
+          
+            // ================================ AUTHORIZATION ================================
+            
+            const userRole = session.user.userRole
+            const sppgId = session.user.sppgId
+          
+            if (!sppgId) {
+              redirect('/access-denied?reason=no_sppg')
+            }
+          
+            // Verify SPPG access
+            const sppg = await checkSppgAccess(sppgId)
+            if (!sppg) {
+              redirect('/access-denied?reason=invalid_sppg')
+            }
+          
+            // Check if user has procurement access
+            const canAccessProcurement = [
+              'SPPG_KEPALA',
+              'SPPG_ADMIN',
+              'SPPG_AKUNTAN',
+              'SPPG_PRODUKSI_MANAGER',
+              'SPPG_STAFF',
+              'SPPG_STAFF_QC'
+            ].includes(userRole || '')
+          
+            if (!canAccessProcurement) {
+              redirect('/access-denied?reason=insufficient_permissions')
+            }
+          
+            // ================================ DATA FETCHING ================================
+          
+            const [stats, pendingApprovals, recentActivities, lowStockAlerts, upcomingDeliveries] = await Promise.all([
+              getProcurementStats(sppgId),
+              getPendingApprovals(sppgId),
+              getRecentActivities(sppgId),
+              getLowStockAlerts(sppgId),
+              getUpcomingDeliveries(sppgId)
+            ])
+          
+            // ================================ RENDER ================================
+          
+            return (
+              <div className="container mx-auto py-6 space-y-6">
+                {/* Breadcrumb Navigation */}
+                <Breadcrumb>
+                  <BreadcrumbList>
+                    <BreadcrumbItem>
+                      <BreadcrumbLink href="/dashboard">
+                        <Home className="h-4 w-4" />
+                      </BreadcrumbLink>
+                    </BreadcrumbItem>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>
+                      <BreadcrumbPage className="flex items-center gap-2">
+                        <ShoppingCart className="h-4 w-4" />
+                        Procurement Dashboard
+                      </BreadcrumbPage>
+                    </BreadcrumbItem>
+                  </BreadcrumbList>
+                </Breadcrumb>
+          
+                {/* Page Header */}
+                <div className="space-y-2">
+                  <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+                    <ShoppingCart className="h-8 w-8 text-primary" />
+                    Procurement Dashboard
+                  </h1>
+                  <p className="text-muted-foreground">
+                    Monitor dan kelola seluruh proses pengadaan bahan baku untuk {sppg.sppgName}
+                  </p>
+                </div>
+          
+                <Separator />
+          
+                {/* Statistics Cards */}
+                <ProcurementStats stats={stats} />
+          
+                {/* Quick Actions Grid */}
+                <QuickActionsGrid />
+          
+                <Separator />
+          
+                {/* Main Content Grid */}
+                <div className="grid gap-6 lg:grid-cols-2">
+                  {/* Left Column */}
+                  <div className="space-y-6">
+                    {/* Pending Approvals */}
+                    <PendingApprovals approvals={pendingApprovals} />
+          
+                    {/* Low Stock Alerts */}
+                    <LowStockAlerts items={lowStockAlerts} />
+                  </div>
+          
+                  {/* Right Column */}
+                  <div className="space-y-6">
+                    {/* Recent Activities */}
+                    <RecentActivities activities={recentActivities} />
+          
+                    {/* Upcoming Deliveries */}
+                    <UpcomingDeliveries deliveries={upcomingDeliveries} />
+                  </div>
+                </div>
+          
+                {/* Footer Info */}
+                <div className="mt-8 p-4 bg-muted/50 dark:bg-muted/20 rounded-lg border border-border/50">
+                  <div className="flex items-start gap-3">
+                    <ShoppingCart className="h-5 w-5 text-muted-foreground mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">Procurement Workflow</p>
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium">Planning</span> → Buat rencana pengadaan dengan alokasi budget
+                        {' • '}
+                        <span className="font-medium">Ordering</span> → Generate purchase orders dari planning
+                        {' • '}
+                        <span className="font-medium">Receiving</span> → Quality control dan penerimaan barang
+                        {' • '}
+                        <span className="font-medium">Payment</span> → Track status pembayaran dan jatuh tempo
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          }
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,129 @@
+/**
+ * @fileoverview Positions List Page
+ * @module app/(sppg)/hrd/positions
+ * @description Enterprise positions list page with filtering and actions
+ * 
+ * ENTERPRISE FEATURES:
+ * - Server-side rendering with React 19
+ * - Real-time data with TanStack Query
+ * - Advanced filtering and search
+ * - Responsive layout with breadcrumbs
+ * - Action buttons (Create)
+ * - Multi-tenant security
+ * - Performance optimized
+ * 
+ * @version Next.js 15.5.4 / React 19.x
+ * @author Bagizi-ID Development Team
+ * @see {@link /docs/copilot-instructions.md} Page Architecture Guidelines
+ */
+
+'use client'
+
+import { Suspense } from 'react'
+
+import Link from 'next/link'
+import { Briefcase, Plus } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardHeader,
+} from '@/components/ui/card'
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Separator } from '@/components/ui/separator'
+
+import { PositionList } from '@/features/sppg/hrd/components/PositionList'
+
+
+/**
+ * Loading skeleton for position list
+ */
+function PositionListSkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-4 w-96" />
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-4">
+          <Skeleton className="h-10 flex-1" />
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <Skeleton className="h-64 w-full" />
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * Positions List Page
+ * Route: /hrd/positions
+ */
+function PositionsPage() {
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Page Header */}
+      <div className="flex flex-col gap-4">
+        {/* Breadcrumbs */}
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link href="/dashboard">Dashboard</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link href="/hrd">HRD</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>Posisi</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+
+        {/* Page Title & Actions */}
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+              <Briefcase className="h-8 w-8 text-primary" />
+              Manajemen Posisi
+            </h1>
+            <p className="text-muted-foreground">
+              Kelola posisi jabatan dan struktur organisasi
+            </p>
+          </div>
+
+          <Button asChild>
+            <Link href="/hrd/positions/new">
+              <Plus className="mr-2 h-4 w-4" />
+              Tambah Posisi
+            </Link>
+          </Button>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Position List */}
+      <Suspense fallback={<PositionListSkeleton />}>
+        <PositionList />
+      </Suspense>
+    </div>
+  )
+}
+
+export default PositionsPage

@@ -1,160 +1,50 @@
 /**
- * @fileoverview Program List Page - SPPG Program Management
- * @version Next.js 15.5.4 App Router
- * @author Bagizi-ID Development Team
+ * @fileoverview Program List Page - SPPG Layer
+ * @version Next.js 15.5.4 / Auth.js v5
  */
 
 'use client'
 
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { Plus } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { useState } from 'react'
+import { 
+  ProgramHeader, 
+  ProgramStatsCards,
+  ProgramList,
+  ProgramFilters
+} from '@/features/sppg/program/components'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
-import { ProgramList } from '@/features/sppg/program/components'
-import { usePrograms, useDeleteProgram } from '@/features/sppg/program/hooks'
-import { toast } from 'sonner'
-import { formatNumber, formatCurrency } from '@/features/sppg/program/lib'
+import { usePrograms } from '@/features/sppg/program/hooks'
+import type { ProgramFilters as ProgramFiltersType } from '@/features/sppg/program/types'
 
 export default function ProgramPage() {
-  const router = useRouter()
-  
-  // React Query hooks
-  const { data: programs = [], isLoading } = usePrograms()
-  const { mutate: deleteProgram } = useDeleteProgram()
+  // Filter state - like beneficiary-organizations
+  const [filters, setFilters] = useState<ProgramFiltersType>({})
 
-  // Calculate statistics
-  const stats = {
-    totalPrograms: programs.length,
-    activePrograms: programs.filter(p => p.status === 'ACTIVE').length,
-    totalRecipients: programs.reduce((sum, p) => sum + p.currentRecipients, 0),
-    totalBudget: programs.reduce((sum, p) => sum + (p.totalBudget || 0), 0),
-  }
-
-  // Handlers
-  const handleView = (id: string) => {
-    router.push(`/program/${id}`)
-  }
-
-  const handleEdit = (id: string) => {
-    router.push(`/program/${id}/edit`)
-  }
-
-  const handleDelete = (id: string) => {
-    if (confirm('Apakah Anda yakin ingin menghapus program ini?')) {
-      deleteProgram(id, {
-        onSuccess: () => {
-          toast.success('Program berhasil dihapus')
-        },
-        onError: (error) => {
-          toast.error(error instanceof Error ? error.message : 'Gagal menghapus program')
-        }
-      })
-    }
-  }
+  // Fetch programs with filters - stats will calculate from filtered data
+  const { data: programs = [], isLoading } = usePrograms(filters)
 
   return (
-    <div className="flex-1 space-y-4 md:space-y-6">
-      {/* Page Header */}
-      <div className="space-y-3 md:space-y-4">
-        <div className="flex flex-col gap-3 md:gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Program Gizi</h1>
-            <p className="text-sm text-muted-foreground mt-1 md:mt-2">
-              Kelola program pemenuhan gizi untuk berbagai kelompok sasaran
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button asChild size="default" className="md:size-lg">
-              <Link href="/program/new">
-                <Plus className="mr-2 h-4 w-4" />
-                Buat Program
-              </Link>
-            </Button>
-          </div>
-        </div>
+    <div className="space-y-6">
+      <ProgramHeader />
+      
+      {/* Stats calculated from filtered programs */}
+      <ProgramStatsCards programs={programs} isLoading={isLoading} />
 
-        {/* Statistics Cards - EXACT COPY FROM MENU PAGE */}
-        <div className="grid gap-3 md:gap-4 grid-cols-2 md:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-2 md:pb-3">
-              <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">
-                Total Program
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="text-xl md:text-2xl font-bold">{formatNumber(stats.totalPrograms)}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {stats.activePrograms} program aktif
-              </p>
-            </CardContent>
-          </Card>
+      {/* Filters */}
+      <ProgramFilters
+        filters={filters}
+        onFiltersChange={setFilters}
+      />
 
-          <Card>
-            <CardHeader className="pb-2 md:pb-3">
-              <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">
-                Program Aktif
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="text-xl md:text-2xl font-bold">{formatNumber(stats.activePrograms)}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {((stats.activePrograms / stats.totalPrograms) * 100 || 0).toFixed(0)}% dari total
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2 md:pb-3">
-              <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">
-                Total Penerima
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="text-xl md:text-2xl font-bold">{formatNumber(stats.totalRecipients)}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Penerima manfaat aktif
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2 md:pb-3">
-              <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">
-                Total Anggaran
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="text-xl md:text-2xl font-bold">{formatCurrency(stats.totalBudget)}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Anggaran keseluruhan
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Program List - EXACT COPY FROM MENU PAGE STRUCTURE */}
       <Card>
-        <CardHeader className="pb-3 md:pb-4">
-          <CardTitle className="text-base md:text-lg">Daftar Program</CardTitle>
-          <CardDescription className="text-xs md:text-sm">
+        <CardHeader>
+          <CardTitle>Semua Program</CardTitle>
+          <CardDescription>
             Kelola dan pantau semua program gizi yang sedang berjalan
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-0">
-          <div className="p-6">
-            <ProgramList
-              data={programs}
-              onView={handleView}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              isLoading={isLoading}
-            />
-          </div>
+        <CardContent>
+          <ProgramList data={programs} isLoading={isLoading} />
         </CardContent>
       </Card>
     </div>

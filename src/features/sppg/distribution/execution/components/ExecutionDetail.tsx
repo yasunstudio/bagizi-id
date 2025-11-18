@@ -481,9 +481,9 @@ export function ExecutionDetail({
                 className="flex items-center justify-between p-3 border rounded-lg"
               >
                 <div className="flex-1">
-                  <p className="font-medium">{delivery.schoolBeneficiary.schoolName}</p>
+                  <p className="font-medium">{delivery.school?.schoolName || delivery.targetName}</p>
                   <p className="text-sm text-muted-foreground">
-                    {delivery.schoolBeneficiary.address}
+                    {delivery.school?.schoolAddress || delivery.targetAddress}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">

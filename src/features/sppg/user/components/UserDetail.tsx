@@ -341,12 +341,13 @@ export function UserDetail({ userId }: UserDetailProps) {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-3">
-                  {user.jobTitle && (
+                  {user.position && (
                     <div className="flex items-center gap-3">
                       <Briefcase className="h-4 w-4 text-muted-foreground" />
                       <div className="flex-1">
-                        <p className="text-sm text-muted-foreground">Jabatan</p>
-                        <p className="font-medium">{user.jobTitle}</p>
+                        <p className="text-sm text-muted-foreground">Posisi</p>
+                        <p className="font-medium">{user.position.positionName}</p>
+                        <p className="text-xs text-muted-foreground">{user.position.positionCode}</p>
                       </div>
                     </div>
                   )}
@@ -356,7 +357,8 @@ export function UserDetail({ userId }: UserDetailProps) {
                       <Building2 className="h-4 w-4 text-muted-foreground" />
                       <div className="flex-1">
                         <p className="text-sm text-muted-foreground">Departemen</p>
-                        <p className="font-medium">{user.department}</p>
+                        <p className="font-medium">{user.department.departmentName}</p>
+                        <p className="text-xs text-muted-foreground">{user.department.departmentCode}</p>
                       </div>
                     </div>
                   )}

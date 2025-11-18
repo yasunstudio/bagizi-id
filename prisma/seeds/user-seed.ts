@@ -1,364 +1,241 @@
 /**
- * @fileoverview Demo Users 2025 - Complete role coverage for testing
+ * User Seed File
+ * 
+ * Creates demo users for SPPG 2025 with various roles:
+ * - Kepala SPPG (Head of SPPG)
+ * - Ahli Gizi (Nutritionist)
+ * - Admin SPPG
+ * - Akuntan (Accountant)
+ * - Staff Dapur (Kitchen Staff)
+ * - Staff Distribusi (Distribution Staff)
+ * - Staff QC (Quality Control)
+ * - Viewer (Read-only)
+ * 
+ * All users use password: "Demo2025" (bcrypt hashed)
+ * Email domain: demo.sppg.id
+ * 
  * @version Next.js 15.5.4 / Prisma 6.17.1
  * @author Bagizi-ID Development Team
- * @description Comprehensive demo accounts for all roles and permissions
+ * @see {@link /docs/copilot-instructions.md} Development Guidelines
  */
 
-import { PrismaClient, User, SPPG } from '@prisma/client'
-import { hash } from 'bcryptjs'
+import { 
+  PrismaClient, 
+  User,
+  SPPG,
+  UserType,
+  UserRole,
+  UserDemoStatus
+} from '@prisma/client'
+import * as bcrypt from 'bcryptjs'
 
-export async function seedDemoUsers2025(prisma: PrismaClient, sppgs: SPPG[]): Promise<User[]> {
-  console.log('  → Creating comprehensive demo users (2025)...')
+/**
+ * Demo user data structure
+ */
+interface DemoUserData {
+  email: string
+  name: string
+  firstName: string
+  lastName: string
+  userRole: UserRole
+  phone: string
+  position: string
+}
 
-  const demoSppg = sppgs.find(s => s.code === 'DEMO-2025')
-  
-  if (!demoSppg) {
-    throw new Error('Demo SPPG not found. Please run seedSppg first.')
+/**
+ * Demo users configuration
+ * All passwords: "Demo2025" (will be hashed with bcrypt)
+ * Email domain: demo.sppg.id (role-based for easy login)
+ */
+const DEMO_USERS: DemoUserData[] = [
+  {
+    email: 'kepala@demo.sppg.id',
+    name: 'Dr. Siti Nurhaliza, S.Gz., M.Gizi',
+    firstName: 'Siti',
+    lastName: 'Nurhaliza',
+    userRole: UserRole.SPPG_KEPALA,
+    phone: '0264-8524126',
+    position: 'Kepala SPPG'
+  },
+  {
+    email: 'ahligizi@demo.sppg.id',
+    name: 'Budi Santoso, S.Gz.',
+    firstName: 'Budi',
+    lastName: 'Santoso',
+    userRole: UserRole.SPPG_AHLI_GIZI,
+    phone: '0264-8524127',
+    position: 'Ahli Gizi Senior'
+  },
+  {
+    email: 'admin@demo.sppg.id',
+    name: 'Dewi Lestari, S.Kom.',
+    firstName: 'Dewi',
+    lastName: 'Lestari',
+    userRole: UserRole.SPPG_ADMIN,
+    phone: '0264-8524128',
+    position: 'Administrator SPPG'
+  },
+  {
+    email: 'akuntan@demo.sppg.id',
+    name: 'Andi Wijaya, S.E., M.Ak.',
+    firstName: 'Andi',
+    lastName: 'Wijaya',
+    userRole: UserRole.SPPG_AKUNTAN,
+    phone: '0264-8524129',
+    position: 'Akuntan SPPG'
+  },
+  {
+    email: 'produksi@demo.sppg.id',
+    name: 'Rudi Hermawan',
+    firstName: 'Rudi',
+    lastName: 'Hermawan',
+    userRole: UserRole.SPPG_PRODUKSI_MANAGER,
+    phone: '0264-8524130',
+    position: 'Manager Produksi'
+  },
+  {
+    email: 'distribusi@demo.sppg.id',
+    name: 'Yanti Sari',
+    firstName: 'Yanti',
+    lastName: 'Sari',
+    userRole: UserRole.SPPG_DISTRIBUSI_MANAGER,
+    phone: '0264-8524131',
+    position: 'Manager Distribusi'
+  },
+  {
+    email: 'dapur1@demo.sppg.id',
+    name: 'Joko Prasetyo',
+    firstName: 'Joko',
+    lastName: 'Prasetyo',
+    userRole: UserRole.SPPG_STAFF_DAPUR,
+    phone: '0264-8524132',
+    position: 'Staff Dapur - Kepala Koki'
+  },
+  {
+    email: 'dapur2@demo.sppg.id',
+    name: 'Sari Rahayu',
+    firstName: 'Sari',
+    lastName: 'Rahayu',
+    userRole: UserRole.SPPG_STAFF_DAPUR,
+    phone: '0264-8524133',
+    position: 'Staff Dapur - Asisten Koki'
+  },
+  {
+    email: 'driver@demo.sppg.id',
+    name: 'Bambang Susilo',
+    firstName: 'Bambang',
+    lastName: 'Susilo',
+    userRole: UserRole.SPPG_STAFF_DISTRIBUSI,
+    phone: '0264-8524134',
+    position: 'Staff Distribusi - Driver'
+  },
+  {
+    email: 'qc@demo.sppg.id',
+    name: 'Lina Marlina, S.TP.',
+    firstName: 'Lina',
+    lastName: 'Marlina',
+    userRole: UserRole.SPPG_STAFF_QC,
+    phone: '0264-8524135',
+    position: 'Staff Quality Control'
+  },
+  {
+    email: 'viewer@demo.sppg.id',
+    name: 'Guest Viewer',
+    firstName: 'Guest',
+    lastName: 'Viewer',
+    userRole: UserRole.SPPG_VIEWER,
+    phone: '0264-8524136',
+    position: 'Viewer (Read-Only)'
   }
+]
 
-  // Default password untuk semua demo accounts
-  const demoPassword = await hash('demo2025', 10)
+/**
+ * Seed User entities for Demo SPPG 2025
+ * 
+ * Creates demo users with various roles for testing and demonstration.
+ * All users are linked to Demo SPPG 2025 and have the same password: "Demo2025"
+ * 
+ * @param prisma - Prisma Client instance
+ * @param sppg - SPPG entity from sppg seed
+ * @returns Promise<User[]> - Array of created User entities
+ * 
+ * @example
+ * ```typescript
+ * const sppg = await seedSPPG(prisma, villages)
+ * const users = await seedUser(prisma, sppg)
+ * console.log(users.length) // 11 users
+ * ```
+ */
+export async function seedUser(
+  prisma: PrismaClient,
+  sppg: SPPG
+): Promise<User[]> {
+  console.log('  → Creating Demo Users for SPPG 2025...')
 
-  const users = await Promise.all([
-    // ========================================
-    // PLATFORM LEVEL USERS (No SPPG Assignment)
-    // ========================================
-    
-    prisma.user.upsert({
-      where: { email: 'superadmin@bagizi.id' },
-      update: {},
-      create: {
-        email: 'superadmin@bagizi.id',
-        name: 'Super Administrator',
-        password: demoPassword,
-        userRole: 'PLATFORM_SUPERADMIN',
-        userType: 'SUPERADMIN',
-        isActive: true,
-        emailVerified: new Date(),
-        sppgId: null, // Platform admin tidak terikat SPPG
-        phone: '081-SUPERADMIN',
-        timezone: 'WIB'
-      }
-    }),
+  // Hash password once for all users (more efficient)
+  const hashedPassword = await bcrypt.hash('Demo2025', 12)
 
-    prisma.user.upsert({
-      where: { email: 'support@bagizi.id' },
-      update: {},
-      create: {
-        email: 'support@bagizi.id',
-        name: 'Platform Support',
-        password: demoPassword,
-        userRole: 'PLATFORM_SUPPORT',
-        userType: 'SUPERADMIN',
-        isActive: true,
-        emailVerified: new Date(),
-        sppgId: null,
-        phone: '081-SUPPORT',
-        timezone: 'WIB'
-      }
-    }),
+  // Create all users
+  const users = await Promise.all(
+    DEMO_USERS.map(async (userData) => {
+      const user = await prisma.user.upsert({
+        where: {
+          email: userData.email
+        },
+        update: {},
+        create: {
+          // Basic Info
+          email: userData.email,
+          password: hashedPassword,
+          name: userData.name,
+          firstName: userData.firstName,
+          lastName: userData.lastName,
+          phone: userData.phone,
 
-    prisma.user.upsert({
-      where: { email: 'analyst@bagizi.id' },
-      update: {},
-      create: {
-        email: 'analyst@bagizi.id',
-        name: 'Platform Analyst',
-        password: demoPassword,
-        userRole: 'PLATFORM_ANALYST',
-        userType: 'SUPERADMIN',
-        isActive: true,
-        emailVerified: new Date(),
-        sppgId: null,
-        phone: '081-ANALYST',
-        timezone: 'WIB'
-      }
-    }),
+          // User Type & Role
+          userType: UserType.SPPG_USER,
+          userRole: userData.userRole,
+          sppgId: sppg.id,
 
-    // ========================================
-    // SPPG MANAGEMENT LEVEL
-    // ========================================
-    
-    prisma.user.upsert({
-      where: { email: 'kepala@demo.sppg.id' },
-      update: {},
-      create: {
-        email: 'kepala@demo.sppg.id',
-        name: 'Dr. Budi Santoso, S.Gz., M.Si',
-        password: demoPassword,
-        userRole: 'SPPG_KEPALA',
-        userType: 'SPPG_USER',
-        isActive: true,
-        emailVerified: new Date(),
-        sppgId: demoSppg.id,
-        phone: '081-KEPALA',
-        timezone: 'WIB'
-      }
-    }),
+          // Status & Verification
+          isActive: true,
+          isEmailVerified: true,
+          isPhoneVerified: true,
+          emailVerified: new Date(),
 
-    prisma.user.upsert({
-      where: { email: 'admin@demo.sppg.id' },
-      update: {},
-      create: {
-        email: 'admin@demo.sppg.id',
-        name: 'Siti Rahayu, S.Kom',
-        password: demoPassword,
-        userRole: 'SPPG_ADMIN',
-        userType: 'SPPG_ADMIN',
-        isActive: true,
-        emailVerified: new Date(),
-        sppgId: demoSppg.id,
-        phone: '081-ADMIN',
-        timezone: 'WIB'
-      }
-    }),
+          // Security Settings
+          twoFactorEnabled: false,
+          securityLevel: 1,
+          riskScore: 0,
+          failedLoginAttempts: 0,
 
-    // ========================================
-    // SPPG OPERATIONAL STAFF
-    // ========================================
-    
-    prisma.user.upsert({
-      where: { email: 'ahligizi@demo.sppg.id' },
-      update: {},
-      create: {
-        email: 'ahligizi@demo.sppg.id',
-        name: 'Dr. Maya Sari, S.Gz., RD',
-        password: demoPassword,
-        userRole: 'SPPG_AHLI_GIZI',
-        userType: 'SPPG_USER',
-        isActive: true,
-        emailVerified: new Date(),
-        sppgId: demoSppg.id,
-        phone: '081-AHLIGIZI',
-        timezone: 'WIB'
-      }
-    }),
+          // Localization
+          timezone: 'Asia/Jakarta',
+          language: 'id',
+          preferredCurrency: 'IDR',
 
-    prisma.user.upsert({
-      where: { email: 'akuntan@demo.sppg.id' },
-      update: {},
-      create: {
-        email: 'akuntan@demo.sppg.id',
-        name: 'Rina Wijaya, S.E., Ak',
-        password: demoPassword,
-        userRole: 'SPPG_AKUNTAN',
-        userType: 'SPPG_USER',
-        isActive: true,
-        emailVerified: new Date(),
-        sppgId: demoSppg.id,
-        phone: '081-AKUNTAN',
-        timezone: 'WIB'
-      }
-    }),
+          // Additional Info
+          location: `Desa Jatiluhur, Purwakarta`,
+          
+          // Demo Settings
+          demoStatus: UserDemoStatus.IN_PROGRESS,
+          demoStartedAt: new Date('2025-01-01'),
+          
+          // Password Settings
+          saltRounds: 12,
+          lastPasswordChange: new Date('2025-01-01')
+        }
+      })
 
-    prisma.user.upsert({
-      where: { email: 'produksi@demo.sppg.id' },
-      update: {},
-      create: {
-        email: 'produksi@demo.sppg.id',
-        name: 'Agus Setiawan',
-        password: demoPassword,
-        userRole: 'SPPG_PRODUKSI_MANAGER',
-        userType: 'SPPG_USER',
-        isActive: true,
-        emailVerified: new Date(),
-        sppgId: demoSppg.id,
-        phone: '081-PRODUKSI',
-        timezone: 'WIB'
-      }
-    }),
-
-    prisma.user.upsert({
-      where: { email: 'distribusi@demo.sppg.id' },
-      update: {},
-      create: {
-        email: 'distribusi@demo.sppg.id',
-        name: 'Dedi Kurniawan',
-        password: demoPassword,
-        userRole: 'SPPG_DISTRIBUSI_MANAGER',
-        userType: 'SPPG_USER',
-        isActive: true,
-        emailVerified: new Date(),
-        sppgId: demoSppg.id,
-        phone: '081-DISTRIBUSI',
-        timezone: 'WIB'
-      }
-    }),
-
-    prisma.user.upsert({
-      where: { email: 'hrd@demo.sppg.id' },
-      update: {},
-      create: {
-        email: 'hrd@demo.sppg.id',
-        name: 'Lina Kusuma, S.Psi',
-        password: demoPassword,
-        userRole: 'SPPG_HRD_MANAGER',
-        userType: 'SPPG_USER',
-        isActive: true,
-        emailVerified: new Date(),
-        sppgId: demoSppg.id,
-        phone: '081-HRD',
-        timezone: 'WIB'
-      }
-    }),
-
-    // ========================================
-    // SPPG STAFF LEVEL
-    // ========================================
-    
-    prisma.user.upsert({
-      where: { email: 'dapur@demo.sppg.id' },
-      update: {},
-      create: {
-        email: 'dapur@demo.sppg.id',
-        name: 'Pak Joko - Staff Dapur',
-        password: demoPassword,
-        userRole: 'SPPG_STAFF_DAPUR',
-        userType: 'SPPG_USER',
-        isActive: true,
-        emailVerified: new Date(),
-        sppgId: demoSppg.id,
-        phone: '081-DAPUR',
-        timezone: 'WIB'
-      }
-    }),
-
-    prisma.user.upsert({
-      where: { email: 'kurir@demo.sppg.id' },
-      update: {},
-      create: {
-        email: 'kurir@demo.sppg.id',
-        name: 'Pak Andi - Staff Distribusi',
-        password: demoPassword,
-        userRole: 'SPPG_STAFF_DISTRIBUSI',
-        userType: 'SPPG_USER',
-        isActive: true,
-        emailVerified: new Date(),
-        sppgId: demoSppg.id,
-        phone: '081-KURIR',
-        timezone: 'WIB'
-      }
-    }),
-
-    prisma.user.upsert({
-      where: { email: 'kurir2@demo.sppg.id' },
-      update: {},
-      create: {
-        email: 'kurir2@demo.sppg.id',
-        name: 'Pak Budi - Staff Distribusi',
-        password: demoPassword,
-        userRole: 'SPPG_STAFF_DISTRIBUSI',
-        userType: 'SPPG_USER',
-        isActive: true,
-        emailVerified: new Date(),
-        sppgId: demoSppg.id,
-        phone: '081-KURIR2',
-        timezone: 'WIB'
-      }
-    }),
-
-    prisma.user.upsert({
-      where: { email: 'adminstaff@demo.sppg.id' },
-      update: {},
-      create: {
-        email: 'adminstaff@demo.sppg.id',
-        name: 'Bu Ani - Staff Admin',
-        password: demoPassword,
-        userRole: 'SPPG_STAFF_ADMIN',
-        userType: 'SPPG_USER',
-        isActive: true,
-        emailVerified: new Date(),
-        sppgId: demoSppg.id,
-        phone: '081-STAFFADMIN',
-        timezone: 'WIB'
-      }
-    }),
-
-    prisma.user.upsert({
-      where: { email: 'qc@demo.sppg.id' },
-      update: {},
-      create: {
-        email: 'qc@demo.sppg.id',
-        name: 'Ibu Ratna - Quality Control',
-        password: demoPassword,
-        userRole: 'SPPG_STAFF_QC',
-        userType: 'SPPG_USER',
-        isActive: true,
-        emailVerified: new Date(),
-        sppgId: demoSppg.id,
-        phone: '081-QC',
-        timezone: 'WIB'
-      }
-    }),
-
-    // ========================================
-    // LIMITED ACCESS
-    // ========================================
-    
-    prisma.user.upsert({
-      where: { email: 'viewer@demo.sppg.id' },
-      update: {},
-      create: {
-        email: 'viewer@demo.sppg.id',
-        name: 'Guest Viewer - Read Only',
-        password: demoPassword,
-        userRole: 'SPPG_VIEWER',
-        userType: 'SPPG_USER',
-        isActive: true,
-        emailVerified: new Date(),
-        sppgId: demoSppg.id,
-        phone: '081-VIEWER',
-        timezone: 'WIB'
-      }
-    }),
-
-    prisma.user.upsert({
-      where: { email: 'demo@demo.sppg.id' },
-      update: {},
-      create: {
-        email: 'demo@demo.sppg.id',
-        name: 'Demo User - Trial Account',
-        password: demoPassword,
-        userRole: 'DEMO_USER',
-        userType: 'DEMO_REQUEST',
-        isActive: true,
-        emailVerified: new Date(),
-        sppgId: demoSppg.id,
-        phone: '081-DEMO',
-        timezone: 'WIB'
-      }
+      console.log(`    ✓ ${user.name} (${userData.userRole})`)
+      return user
     })
-  ])
+  )
 
-  console.log(`  ✓ Created ${users.length} comprehensive demo users for 2025`)
-  console.log(`\n  📋 Demo Accounts Summary:`)
-  console.log(`  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
-  console.log(`  🔐 Password untuk semua akun: demo2025`)
-  console.log(`  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
-  console.log(`  \n  🌐 PLATFORM LEVEL:`)
-  console.log(`     • superadmin@bagizi.id     - PLATFORM_SUPERADMIN`)
-  console.log(`     • support@bagizi.id        - PLATFORM_SUPPORT`)
-  console.log(`     • analyst@bagizi.id        - PLATFORM_ANALYST`)
-  console.log(`  \n  👑 SPPG MANAGEMENT:`)
-  console.log(`     • kepala@demo.sppg.id      - SPPG_KEPALA (Full Access)`)
-  console.log(`     • admin@demo.sppg.id       - SPPG_ADMIN`)
-  console.log(`  \n  💼 SPPG OPERATIONAL:`)
-  console.log(`     • ahligizi@demo.sppg.id    - SPPG_AHLI_GIZI`)
-  console.log(`     • akuntan@demo.sppg.id     - SPPG_AKUNTAN`)
-  console.log(`     • produksi@demo.sppg.id    - SPPG_PRODUKSI_MANAGER`)
-  console.log(`     • distribusi@demo.sppg.id  - SPPG_DISTRIBUSI_MANAGER`)
-  console.log(`     • hrd@demo.sppg.id         - SPPG_HRD_MANAGER`)
-  console.log(`  \n  👷 SPPG STAFF:`)
-  console.log(`     • dapur@demo.sppg.id       - SPPG_STAFF_DAPUR`)
-  console.log(`     • kurir@demo.sppg.id       - SPPG_STAFF_DISTRIBUSI`)
-  console.log(`     • kurir2@demo.sppg.id      - SPPG_STAFF_DISTRIBUSI`)
-  console.log(`     • adminstaff@demo.sppg.id  - SPPG_STAFF_ADMIN`)
-  console.log(`     • qc@demo.sppg.id          - SPPG_STAFF_QC`)
-  console.log(`  \n  👁️  LIMITED ACCESS:`)
-  console.log(`     • viewer@demo.sppg.id      - SPPG_VIEWER (Read Only)`)
-  console.log(`     • demo@demo.sppg.id        - DEMO_USER (Trial)`)
-  console.log(`  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`)
+  console.log(`  ✓ Created ${users.length} demo users for ${sppg.name}`)
+  console.log(`    Default password for all users: "Demo2025"`)
+  console.log(`    Email domain: demo.sppg.id`)
+  console.log(`    Roles: Kepala SPPG, Ahli Gizi, Admin, Akuntan, Produksi, Distribusi, Dapur (2), QC, Viewer`)
 
   return users
 }

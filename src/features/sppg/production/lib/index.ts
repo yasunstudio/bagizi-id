@@ -221,8 +221,10 @@ export function passesQualityThreshold(score: number, threshold: number = 70): b
 /**
  * Calculate duration between two dates in minutes
  */
-export function calculateDuration(start: Date, end: Date): number {
-  return Math.round((end.getTime() - start.getTime()) / (1000 * 60))
+export function calculateDuration(start: Date | string, end: Date | string): number {
+  const startDate = typeof start === 'string' ? new Date(start) : start
+  const endDate = typeof end === 'string' ? new Date(end) : end
+  return Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60))
 }
 
 /**

@@ -113,9 +113,18 @@ export interface QualityCheckInput {
   actionTaken?: string
 }
 
+export interface QualityCheckWithUser extends QualityControl {
+  user?: {
+    id: string
+    name: string
+    email: string
+    userRole: string | null
+  }
+}
+
 export interface QualityCheckResponse {
   success: boolean
-  data?: QualityControl
+  data?: QualityCheckWithUser | QualityCheckWithUser[]
   error?: string
 }
 
@@ -275,14 +284,24 @@ export const productionApi = {
    */
   async startProduction(id: string, headers?: HeadersInit): Promise<ProductionResponse> {
     const baseUrl = getBaseUrl()
-    const response = await fetch(`${baseUrl}/api/sppg/production/${id}/start`, {
+    const response = await fetch(`${baseUrl}/api/sppg/production/${id}/status`, {
       ...getFetchOptions(headers),
-      method: 'POST',
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body: JSON.stringify({ status: 'PREPARING' }),
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Failed to start production')
+      const contentType = response.headers.get('content-type')
+      if (contentType && contentType.includes('application/json')) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to start production')
+      } else {
+        throw new Error(`Failed to start production: ${response.status} ${response.statusText}`)
+      }
     }
 
     return response.json()
@@ -295,14 +314,24 @@ export const productionApi = {
    */
   async startCooking(id: string, headers?: HeadersInit): Promise<ProductionResponse> {
     const baseUrl = getBaseUrl()
-    const response = await fetch(`${baseUrl}/api/sppg/production/${id}/cook`, {
+    const response = await fetch(`${baseUrl}/api/sppg/production/${id}/status`, {
       ...getFetchOptions(headers),
-      method: 'POST',
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body: JSON.stringify({ status: 'COOKING' }),
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Failed to start cooking')
+      const contentType = response.headers.get('content-type')
+      if (contentType && contentType.includes('application/json')) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to start cooking')
+      } else {
+        throw new Error(`Failed to start cooking: ${response.status} ${response.statusText}`)
+      }
     }
 
     return response.json()
@@ -316,15 +345,30 @@ export const productionApi = {
    */
   async completeProduction(id: string, data: StatusUpdateInput, headers?: HeadersInit): Promise<ProductionResponse> {
     const baseUrl = getBaseUrl()
-    const response = await fetch(`${baseUrl}/api/sppg/production/${id}/complete`, {
+    const response = await fetch(`${baseUrl}/api/sppg/production/${id}/status`, {
       ...getFetchOptions(headers),
-      method: 'POST',
-      body: JSON.stringify(data),
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body: JSON.stringify({
+        status: 'QUALITY_CHECK',
+        actualPortions: data.actualPortions,
+        actualTemperature: data.actualTemperature,
+        wasteAmount: data.wasteAmount,
+        wasteNotes: data.wasteNotes,
+      }),
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Failed to complete production')
+      const contentType = response.headers.get('content-type')
+      if (contentType && contentType.includes('application/json')) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to complete production')
+      } else {
+        throw new Error(`Failed to complete production: ${response.status} ${response.statusText}`)
+      }
     }
 
     return response.json()
@@ -338,15 +382,27 @@ export const productionApi = {
    */
   async finalizeProduction(id: string, qualityPassed: boolean, headers?: HeadersInit): Promise<ProductionResponse> {
     const baseUrl = getBaseUrl()
-    const response = await fetch(`${baseUrl}/api/sppg/production/${id}/finalize`, {
+    const response = await fetch(`${baseUrl}/api/sppg/production/${id}/status`, {
       ...getFetchOptions(headers),
-      method: 'POST',
-      body: JSON.stringify({ qualityPassed }),
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body: JSON.stringify({
+        status: 'COMPLETED',
+        qualityPassed,
+      }),
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Failed to finalize production')
+      const contentType = response.headers.get('content-type')
+      if (contentType && contentType.includes('application/json')) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to finalize production')
+      } else {
+        throw new Error(`Failed to finalize production: ${response.status} ${response.statusText}`)
+      }
     }
 
     return response.json()
@@ -360,15 +416,27 @@ export const productionApi = {
    */
   async cancelProduction(id: string, reason: string, headers?: HeadersInit): Promise<ProductionResponse> {
     const baseUrl = getBaseUrl()
-    const response = await fetch(`${baseUrl}/api/sppg/production/${id}/cancel`, {
+    const response = await fetch(`${baseUrl}/api/sppg/production/${id}/status`, {
       ...getFetchOptions(headers),
-      method: 'POST',
-      body: JSON.stringify({ reason }),
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body: JSON.stringify({
+        status: 'CANCELLED',
+        cancellationReason: reason,
+      }),
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Failed to cancel production')
+      const contentType = response.headers.get('content-type')
+      if (contentType && contentType.includes('application/json')) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to cancel production')
+      } else {
+        throw new Error(`Failed to cancel production: ${response.status} ${response.statusText}`)
+      }
     }
 
     return response.json()
@@ -382,15 +450,25 @@ export const productionApi = {
    */
   async addQualityCheck(id: string, data: QualityCheckInput, headers?: HeadersInit): Promise<QualityCheckResponse> {
     const baseUrl = getBaseUrl()
-    const response = await fetch(`${baseUrl}/api/sppg/production/${id}/quality`, {
+    const response = await fetch(`${baseUrl}/api/sppg/production/${id}/quality-checks`, {
       ...getFetchOptions(headers),
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers,
+      },
       body: JSON.stringify(data),
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Failed to add quality check')
+      const contentType = response.headers.get('content-type')
+      if (contentType && contentType.includes('application/json')) {
+        const error = await response.json()
+        // Use error.message first (from API), fallback to error.error, then default message
+        throw new Error(error.message || error.error || 'Failed to add quality check')
+      } else {
+        throw new Error(`Failed to add quality check: ${response.status} ${response.statusText}`)
+      }
     }
 
     return response.json()
@@ -403,7 +481,7 @@ export const productionApi = {
    */
   async getQualityChecks(id: string, headers?: HeadersInit): Promise<{ success: boolean; data?: QualityControl[]; error?: string }> {
     const baseUrl = getBaseUrl()
-    const response = await fetch(`${baseUrl}/api/sppg/production/${id}/quality`, getFetchOptions(headers))
+    const response = await fetch(`${baseUrl}/api/sppg/production/${id}/quality-checks`, getFetchOptions(headers))
     
     if (!response.ok) {
       const error = await response.json()

@@ -787,19 +787,13 @@ function getStockStatus(item: InventoryItem) {
 
 function formatCategory(category: string): string {
   const labels: Record<string, string> = {
-    BAHAN_POKOK: 'Bahan Pokok',
-    PROTEIN_HEWANI: 'Protein Hewani',
-    PROTEIN_NABATI: 'Protein Nabati',
+    PROTEIN: 'Protein',
+    KARBOHIDRAT: 'Karbohidrat',
     SAYURAN: 'Sayuran',
     BUAH: 'Buah',
-    BUMBU: 'Bumbu & Rempah',
-    SUSU_PRODUK_OLAHAN: 'Susu & Produk Olahan',
+    SUSU_OLAHAN: 'Susu & Olahan',
+    BUMBU_REMPAH: 'Bumbu & Rempah',
     MINYAK_LEMAK: 'Minyak & Lemak',
-    GULA_PEMANIS: 'Gula & Pemanis',
-    MAKANAN_KEMASAN: 'Makanan Kemasan',
-    MINUMAN: 'Minuman',
-    BAHAN_TAMBAHAN: 'Bahan Tambahan',
-    PERLENGKAPAN_DAPUR: 'Perlengkapan Dapur',
     LAINNYA: 'Lainnya',
   }
   return labels[category] || category

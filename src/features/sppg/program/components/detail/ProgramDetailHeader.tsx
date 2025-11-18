@@ -3,7 +3,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Edit, ArrowLeft, Trash2 } from 'lucide-react'
-import { formatDate } from '@/features/sppg/program/lib/programUtils'
+import { formatDate, formatNumberWithSeparator, getTargetGroupLabel, getProgramTypeLabel, getProgramStatusLabel, getStatusVariant } from '@/features/sppg/program/lib/programUtils'
 import type { Program } from '@/features/sppg/program/types/program.types'
 
 interface ProgramDetailHeaderProps {
@@ -40,19 +40,23 @@ export function ProgramDetailHeader({
               {program.name}
             </h1>
             <Badge
-              variant={program.status === 'ACTIVE' ? 'default' : 'secondary'}
+              variant={getStatusVariant(program.status)}
               className="text-sm"
             >
-              {program.status === 'ACTIVE' && 'Aktif'}
-              {program.status === 'DRAFT' && 'Draft'}
-              {program.status === 'COMPLETED' && 'Selesai'}
-              {program.status === 'SUSPENDED' && 'Ditangguhkan'}
+              {getProgramStatusLabel(program.status)}
             </Badge>
           </div>
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <span>Kode: {program.programCode}</span>
             <span>•</span>
-            <span>Target: {program.targetGroup}</span>
+            <span>Jenis: {getProgramTypeLabel(program.programType)}</span>
+            <span>•</span>
+            <span>
+              Target: {program.allowedTargetGroups.length === 1 
+                ? getTargetGroupLabel(program.allowedTargetGroups[0])
+                : `${program.allowedTargetGroups.length} Kelompok`
+              }
+            </span>
             <span>•</span>
             <span>
               {formatDate(program.startDate, 'dd MMM yyyy')} -{' '}
@@ -79,12 +83,12 @@ export function ProgramDetailHeader({
       <div className="grid gap-4 md:grid-cols-4">
         <div className="p-4 border rounded-lg">
           <p className="text-sm text-muted-foreground">Target Penerima</p>
-          <p className="text-2xl font-bold mt-1">{program.targetRecipients}</p>
+          <p className="text-2xl font-bold mt-1">{formatNumberWithSeparator(program.targetRecipients)}</p>
         </div>
         <div className="p-4 border rounded-lg">
           <p className="text-sm text-muted-foreground">Terdaftar Saat Ini</p>
           <p className="text-2xl font-bold mt-1 text-primary">
-            {program.currentRecipients}
+            {formatNumberWithSeparator(program.currentRecipients)}
           </p>
         </div>
         <div className="p-4 border rounded-lg">

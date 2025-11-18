@@ -6,7 +6,7 @@
 
 'use client'
 
-import { type FC } from 'react'
+import { type FC, useCallback, useRef, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { SafeSelect, SelectItem as SafeSelectItem } from '@/components/ui/safe-select'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Calendar } from '@/components/ui/calendar'
@@ -43,19 +44,18 @@ import {
   CalendarIcon, 
   Info,
   Users,
-  Target,
   DollarSign,
   MapPin,
-  School,
 } from 'lucide-react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { createProgramSchema, type CreateProgramInput } from '../schemas'
 import type { Program } from '../types'
-import { useSchools } from '../hooks/useSchools'
-import { MultiSelectCombobox } from '@/components/ui/multi-select-combobox'
-import { ProgramStatus, ProgramType, TargetGroup } from '@prisma/client'
+import { ProgramStatus, ProgramType, TargetGroup, BudgetSource } from '@prisma/client'
 import { toast } from 'sonner'
-import { useEffect } from 'react'
+import { TargetGroupSelector } from './TargetGroupSelector'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { InfoIcon } from 'lucide-react'
+import { getTargetGroupLabel } from '../lib/programUtils'
 
 interface ProgramFormProps {
   initialData?: Program
@@ -72,9 +72,6 @@ export const ProgramForm: FC<ProgramFormProps> = ({
   isSubmitting = false,
   mode = 'create',
 }) => {
-  // Fetch schools for autocomplete
-  const { data: schools, isLoading: isLoadingSchools } = useSchools()
-  
   const form = useForm({
     resolver: zodResolver(createProgramSchema),
     defaultValues: initialData ? {
@@ -82,37 +79,71 @@ export const ProgramForm: FC<ProgramFormProps> = ({
       description: initialData.description ?? '',
       programCode: initialData.programCode,
       programType: initialData.programType,
-      targetGroup: initialData.targetGroup,
+      // ✅ SIMPLIFIED (Nov 11, 2025): Always use allowedTargetGroups array
+      allowedTargetGroups: (initialData.allowedTargetGroups ?? []) as TargetGroup[],
       targetRecipients: initialData.targetRecipients,
       currentRecipients: initialData.currentRecipients ?? 0,
-      calorieTarget: initialData.calorieTarget ?? undefined,
-      proteinTarget: initialData.proteinTarget ?? undefined,
-      fatTarget: initialData.fatTarget ?? undefined,
-      carbTarget: initialData.carbTarget ?? undefined,
-      fiberTarget: initialData.fiberTarget ?? undefined,
+      // ❌ REMOVED (Phase 4 - Nov 8, 2025): Nutrition targets from NutritionStandard
+      // calorieTarget, proteinTarget, carbTarget, fatTarget, fiberTarget
       mealsPerDay: initialData.mealsPerDay,
       feedingDays: initialData.feedingDays ?? [],
       startDate: initialData.startDate ? new Date(initialData.startDate) : undefined,
       endDate: initialData.endDate ? new Date(initialData.endDate) : undefined,
+      
+      // ✅ UPDATED (Nov 12, 2025): Budget fields
       totalBudget: initialData.totalBudget ?? undefined,
       budgetPerMeal: initialData.budgetPerMeal ?? undefined,
+      budgetSource: initialData.budgetSource ?? BudgetSource.APBN_PUSAT,
+      budgetYear: initialData.budgetYear ?? new Date().getFullYear(),
+      dpaNumber: initialData.dpaNumber ?? undefined,
+      dpaDate: initialData.dpaDate ? new Date(initialData.dpaDate) : undefined,
+      apbnProgramCode: initialData.apbnProgramCode ?? undefined,
+      budgetDecreeNumber: initialData.budgetDecreeNumber ?? undefined,
+      budgetDecreeDate: initialData.budgetDecreeDate ? new Date(initialData.budgetDecreeDate) : undefined,
+      budgetDecreeUrl: initialData.budgetDecreeUrl ?? undefined,
+      foodBudget: initialData.foodBudget ?? undefined,
+      operationalBudget: initialData.operationalBudget ?? undefined,
+      transportBudget: initialData.transportBudget ?? undefined,
+      utilityBudget: initialData.utilityBudget ?? undefined,
+      staffBudget: initialData.staffBudget ?? undefined,
+      otherBudget: initialData.otherBudget ?? undefined,
+      budgetApprovalNotes: initialData.budgetApprovalNotes ?? undefined,
+      
       status: initialData.status as ProgramStatus,
       implementationArea: initialData.implementationArea ?? '',
-      partnerSchools: initialData.partnerSchools ?? [],
     } : {
       name: '',
       description: '',
       programCode: '',
-      programType: 'FREE_NUTRITIOUS_MEAL' as ProgramType,
-      targetGroup: 'CHILDREN_UNDER_5' as TargetGroup,
+      programType: ProgramType.FREE_NUTRITIOUS_MEAL,
+      // ✅ SIMPLIFIED: Start with empty array, user must select at least 1
+      allowedTargetGroups: [] as TargetGroup[],
       targetRecipients: 1,
       currentRecipients: 0,
       mealsPerDay: 1,
       feedingDays: [],
-      budgetPerMeal: 0,
+      
+      // ✅ UPDATED (Nov 12, 2025): Budget fields with defaults
+      totalBudget: undefined,
+      budgetPerMeal: undefined,
+      budgetSource: BudgetSource.APBN_PUSAT,
+      budgetYear: new Date().getFullYear(),
+      dpaNumber: undefined,
+      dpaDate: undefined,
+      apbnProgramCode: undefined,
+      budgetDecreeNumber: undefined,
+      budgetDecreeDate: undefined,
+      budgetDecreeUrl: undefined,
+      foodBudget: undefined,
+      operationalBudget: undefined,
+      transportBudget: undefined,
+      utilityBudget: undefined,
+      staffBudget: undefined,
+      otherBudget: undefined,
+      budgetApprovalNotes: undefined,
+      
       status: ProgramStatus.DRAFT,
       implementationArea: '',
-      partnerSchools: [],
     }
   })
 
@@ -126,27 +157,40 @@ export const ProgramForm: FC<ProgramFormProps> = ({
     await onSubmit(validated.data)
   })
 
-  // Watch for form changes (used in Generate button)
-  const watchName = form.watch('name')
-  const watchType = form.watch('programType')
-  const watchPartnerSchools = form.watch('partnerSchools')
+  // ✅ SIMPLIFIED (Nov 11, 2025): Only watch allowedTargetGroups
+  const watchAllowedTargetGroups = form.watch('allowedTargetGroups')
 
-  // Auto-calculate currentRecipients based on selected schools
+  // Store form in ref to avoid dependency issues
+  const formRef = useRef(form)
   useEffect(() => {
-    if (!schools || !watchPartnerSchools || watchPartnerSchools.length === 0) {
-      form.setValue('currentRecipients', 0, { shouldValidate: false })
-      return
-    }
+    formRef.current = form
+  }, [form])
 
-    // Calculate total students from selected schools
-    const totalStudents = schools
-      .filter(school => watchPartnerSchools.includes(school.schoolName))
-      .reduce((sum, school) => sum + (school.totalStudents || 0), 0)
+  // Stable onChange handlers using ref (NO dependencies to prevent re-creation)
+  const handleProgramTypeChange = useCallback((value: string) => {
+    formRef.current.setValue('programType', value as ProgramType, { shouldValidate: true })
+  }, [])
 
-    form.setValue('currentRecipients', totalStudents, { shouldValidate: false })
-  }, [watchPartnerSchools, schools, form])
+  const handleStatusChange = useCallback((value: string) => {
+    formRef.current.setValue('status', value as ProgramStatus, { shouldValidate: true })
+  }, [])
 
-  // Days of week for feeding schedule
+  const handleMealsPerDayChange = useCallback((value: string) => {
+    formRef.current.setValue('mealsPerDay', Number(value), { shouldValidate: true })
+  }, [])
+
+  const handleAllowedTargetGroupsChange = useCallback((value: TargetGroup[]) => {
+    formRef.current.setValue('allowedTargetGroups', value, { shouldValidate: true })
+  }, [])
+
+  // NOTE: Fields are NOT auto-reset when toggling modes to prevent Select errors
+  // User can manually clear fields if needed
+  // This prevents "defaultValue must be scalar" error in Radix UI Select
+
+  // Note: currentRecipients should be manually input or calculated from enrollments
+  // To manage school enrollments, use the "Sekolah" tab after creating the program
+
+  // Days of week for feeding schedule (0-6: Sunday to Saturday, ISO 8601 standard)
   const daysOfWeek = [
     { value: 1, label: 'Senin' },
     { value: 2, label: 'Selasa' },
@@ -154,7 +198,7 @@ export const ProgramForm: FC<ProgramFormProps> = ({
     { value: 4, label: 'Kamis' },
     { value: 5, label: 'Jumat' },
     { value: 6, label: 'Sabtu' },
-    { value: 7, label: 'Minggu' },
+    { value: 0, label: 'Minggu' },
   ]
 
   return (
@@ -199,46 +243,24 @@ export const ProgramForm: FC<ProgramFormProps> = ({
                     <FormControl>
                       <div className="flex gap-2">
                         <Input 
-                          placeholder="PWK-MBG-2025" 
+                          placeholder="PRG12ABC" 
                           {...field}
                           className="font-mono"
+                          style={{ textTransform: 'uppercase' }}
                         />
                         {mode === 'create' && (
                           <Button
                             type="button"
                             variant="outline"
                             onClick={() => {
-                              const name = watchName || ''
-                              const type = watchType || 'FREE_NUTRITIOUS_MEAL'
-                              
-                              if (!name.trim()) {
-                                toast.error('Isi nama program terlebih dahulu')
-                                return
+                              // Generate 8-character random alphanumeric code
+                              const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+                              let code = ''
+                              for (let i = 0; i < 8; i++) {
+                                code += chars.charAt(Math.floor(Math.random() * chars.length))
                               }
                               
-                              // Generate code from name and type
-                              const typeCodeMap: Record<ProgramType, string> = {
-                                'FREE_NUTRITIOUS_MEAL': 'MBG',
-                                'NUTRITIONAL_RECOVERY': 'PG',
-                                'NUTRITIONAL_EDUCATION': 'EG',
-                                'EMERGENCY_NUTRITION': 'GD',
-                                'STUNTING_INTERVENTION': 'IS'
-                              }
-                              
-                              // Extract location from program name (first word)
-                              const words = name.trim().split(/\s+/)
-                              const location = words[0]?.substring(0, 3).toUpperCase() || 'PWK'
-                              
-                              // Get type code
-                              const typeCode = typeCodeMap[type] || 'MBG'
-                              
-                              // Get current year
-                              const year = new Date().getFullYear()
-                              
-                              // Generate: LOCATION-TYPE-YEAR
-                              const newCode = `${location}-${typeCode}-${year}`
-                              
-                              form.setValue('programCode', newCode)
+                              form.setValue('programCode', code)
                               toast.success('Kode program berhasil dibuat')
                             }}
                             className="shrink-0"
@@ -250,8 +272,8 @@ export const ProgramForm: FC<ProgramFormProps> = ({
                     </FormControl>
                     <FormDescription>
                       {mode === 'create' 
-                        ? 'Klik "Generate" untuk membuat kode otomatis dari nama & jenis program'
-                        : 'Kode unik untuk identifikasi program'
+                        ? 'Klik "Generate" untuk membuat kode unik 8 karakter secara otomatis'
+                        : 'Kode unik 8 karakter untuk identifikasi program'
                       }
                     </FormDescription>
                     <FormMessage />
@@ -286,7 +308,10 @@ export const ProgramForm: FC<ProgramFormProps> = ({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Jenis Program *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select 
+                      value={field.value || ''} 
+                      onValueChange={handleProgramTypeChange}
+                    >
                       <FormControl>
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Pilih jenis program" />
@@ -314,78 +339,101 @@ export const ProgramForm: FC<ProgramFormProps> = ({
                   </FormItem>
                 )}
               />
+            </div>
 
-              <FormField
-                control={form.control}
-                name="targetGroup"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Target Kelompok *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+            <Separator className="my-6" />
+
+            {/* Multi-Target Configuration Section */}
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-sm font-medium mb-2">Konfigurasi Target Penerima</h3>
+                <p className="text-sm text-muted-foreground">
+                  Tentukan apakah program ini untuk satu kelompok spesifik atau bisa melayani berbagai kelompok sasaran
+                </p>
+              </div>
+
+              {/* ✅ SIMPLIFIED (Nov 11, 2025): Target Groups Selection (Always Multi-Select) */}
+              <div className="space-y-4">
+                <Alert>
+                  <InfoIcon className="h-4 w-4" />
+                  <AlertDescription>
+                    <strong>Kelompok Sasaran:</strong> Pilih minimal 1 kelompok sasaran untuk program ini.
+                    {watchAllowedTargetGroups && watchAllowedTargetGroups.length > 1
+                      ? ` (Multi-target: ${watchAllowedTargetGroups.length} kelompok dipilih)`
+                      : watchAllowedTargetGroups && watchAllowedTargetGroups.length === 1
+                      ? ` (Single-target: 1 kelompok dipilih)`
+                      : ' Belum ada kelompok dipilih.'}
+                  </AlertDescription>
+                </Alert>
+
+                <FormField
+                  control={form.control}
+                  name="allowedTargetGroups"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Kelompok Sasaran *</FormLabel>
                       <FormControl>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Pilih target kelompok" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="TODDLER">
-                          Balita
-                        </SelectItem>
-                        <SelectItem value="SCHOOL_CHILDREN">
-                          Anak Sekolah
-                        </SelectItem>
-                        <SelectItem value="TEENAGE_GIRL">
-                          Remaja Putri
-                        </SelectItem>
-                        <SelectItem value="PREGNANT_WOMAN">
-                          Ibu Hamil
-                        </SelectItem>
-                        <SelectItem value="BREASTFEEDING_MOTHER">
-                          Ibu Menyusui
-                        </SelectItem>
-                        <SelectItem value="ELDERLY">
-                          Lansia
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                        <TargetGroupSelector
+                          value={Array.isArray(field.value) ? field.value : []}
+                          onChange={handleAllowedTargetGroupsChange}
+                            mode="checkbox"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Pilih minimal 1 kelompok sasaran. Pilih 1 untuk single-target, atau 2+ untuk multi-target.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
+                  {/* Show selection preview */}
+                  {watchAllowedTargetGroups && watchAllowedTargetGroups.length > 0 && (
+                    <div className="rounded-lg bg-blue-50 dark:bg-blue-950 p-4 border border-blue-200 dark:border-blue-800">
+                      <p className="text-sm text-blue-800 dark:text-blue-200">
+                        {watchAllowedTargetGroups.length === 1 
+                          ? `✓ Program single-target untuk: ${getTargetGroupLabel(watchAllowedTargetGroups[0])}`
+                          : `✓ Program multi-target dengan ${watchAllowedTargetGroups.length} kelompok sasaran`}
+                      </p>
+                    </div>
+                  )}
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <FormField
                 control={form.control}
                 name="status"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Status Program</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Pilih status" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value={ProgramStatus.DRAFT}>
+                    <FormControl>
+                      <SafeSelect
+                        value={field.value}
+                        onValueChange={handleStatusChange}
+                        placeholder="Pilih status"
+                        className="w-full"
+                      >
+                        <SafeSelectItem value={ProgramStatus.DRAFT}>
                           Draft
-                        </SelectItem>
-                        <SelectItem value={ProgramStatus.ACTIVE}>
+                        </SafeSelectItem>
+                        <SafeSelectItem value={ProgramStatus.ACTIVE}>
                           Aktif
-                        </SelectItem>
-                        <SelectItem value={ProgramStatus.PAUSED}>
+                        </SafeSelectItem>
+                        <SafeSelectItem value={ProgramStatus.PAUSED}>
                           Ditunda
-                        </SelectItem>
-                        <SelectItem value={ProgramStatus.COMPLETED}>
+                        </SafeSelectItem>
+                        <SafeSelectItem value={ProgramStatus.COMPLETED}>
                           Selesai
-                        </SelectItem>
-                        <SelectItem value={ProgramStatus.CANCELLED}>
+                        </SafeSelectItem>
+                        <SafeSelectItem value={ProgramStatus.CANCELLED}>
                           Dibatalkan
-                        </SelectItem>
-                        <SelectItem value={ProgramStatus.ARCHIVED}>
+                        </SafeSelectItem>
+                        <SafeSelectItem value={ProgramStatus.ARCHIVED}>
                           Arsip
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                        </SafeSelectItem>
+                      </SafeSelect>
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -453,15 +501,10 @@ export const ProgramForm: FC<ProgramFormProps> = ({
                         disabled
                         className="bg-muted/50 cursor-not-allowed"
                       />
-                      {(field.value ?? 0) > 0 && (
-                        <Badge variant="secondary" className="shrink-0">
-                          {watchPartnerSchools?.length || 0} sekolah
-                        </Badge>
-                      )}
                     </div>
                   </FormControl>
                   <FormDescription className="flex items-center gap-2">
-                    Jumlah ini dihitung otomatis dari total siswa di sekolah mitra yang dipilih
+                    Input manual atau akan dihitung dari total siswa terdaftar di tab &quot;Sekolah&quot;
                     {(field.value ?? 0) > 0 && (
                       <span className="text-primary font-medium">
                         ({(((field.value ?? 0) / form.watch('targetRecipients')) * 100).toFixed(1)}% dari target)
@@ -492,161 +535,12 @@ export const ProgramForm: FC<ProgramFormProps> = ({
                 </FormItem>
               )}
             />
-
-            <FormField
-              control={form.control}
-              name="partnerSchools"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center gap-2">
-                    <School className="h-4 w-4" />
-                    Sekolah Mitra
-                  </FormLabel>
-                  <FormControl>
-                    <MultiSelectCombobox
-                      options={
-                        schools?.map((school) => ({
-                          label: school.schoolCode 
-                            ? `${school.schoolName} (${school.schoolCode})`
-                            : school.schoolName,
-                          value: school.schoolName,
-                        })) || []
-                      }
-                      selected={field.value || []}
-                      onChange={field.onChange}
-                      placeholder="Pilih sekolah mitra..."
-                      searchPlaceholder="Cari nama sekolah..."
-                      emptyMessage={
-                        isLoadingSchools 
-                          ? "Memuat data sekolah..." 
-                          : "Tidak ada sekolah ditemukan"
-                      }
-                      disabled={isLoadingSchools || isSubmitting}
-                      allowCustom={true}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    Pilih sekolah yang sudah terdaftar atau tambahkan manual sekolah baru
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
           </CardContent>
         </Card>
 
-        {/* Nutrition Targets */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Target className="h-5 w-5 text-primary" />
-              Target Gizi Harian
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <FormField
-                control={form.control}
-                name="calorieTarget"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Kalori (kkal)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        placeholder="500"
-                        {...field}
-                        value={field.value || ''}
-                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="proteinTarget"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Protein (g)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        placeholder="15"
-                        {...field}
-                        value={field.value || ''}
-                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="carbTarget"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Karbohidrat (g)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        placeholder="75"
-                        {...field}
-                        value={field.value || ''}
-                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="fatTarget"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Lemak (g)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        placeholder="15"
-                        {...field}
-                        value={field.value || ''}
-                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="fiberTarget"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Serat (g)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        placeholder="10"
-                        {...field}
-                        value={field.value || ''}
-                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-          </CardContent>
-        </Card>
+        {/* ❌ REMOVED (Phase 4 - Nov 8, 2025): Nutrition Target Form Fields */}
+        {/* Nutrition data now comes from NutritionStandard (read-only) */}
+        {/* See ProgramNutritionTab for viewing nutrition standards */}
 
         {/* Schedule & Budget */}
         <Card>
@@ -750,21 +644,18 @@ export const ProgramForm: FC<ProgramFormProps> = ({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Frekuensi Makan per Hari *</FormLabel>
-                    <Select 
-                      onValueChange={(value) => field.onChange(Number(value))} 
-                      value={field.value?.toString()}
-                    >
-                      <FormControl>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Pilih frekuensi" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="1">1x sehari</SelectItem>
-                        <SelectItem value="2">2x sehari</SelectItem>
-                        <SelectItem value="3">3x sehari</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <SafeSelect
+                        value={field.value?.toString()}
+                        onValueChange={handleMealsPerDayChange}
+                        placeholder="Pilih frekuensi"
+                        className="w-full"
+                      >
+                        <SafeSelectItem value="1">1x sehari</SafeSelectItem>
+                        <SafeSelectItem value="2">2x sehari</SafeSelectItem>
+                        <SafeSelectItem value="3">3x sehari</SafeSelectItem>
+                      </SafeSelect>
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -809,50 +700,375 @@ export const ProgramForm: FC<ProgramFormProps> = ({
 
             <Separator />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="totalBudget"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <DollarSign className="h-4 w-4" />
-                      Total Anggaran (Rp)
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        placeholder="50000000"
-                        {...field}
-                        value={field.value || ''}
-                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      Total anggaran untuk seluruh program
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            {/* Budget Section - UPDATED (Nov 12, 2025) */}
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <DollarSign className="h-5 w-5 text-primary" />
+                  Anggaran Program
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Detail anggaran program sesuai regulasi pemerintah
+                </p>
+              </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="totalBudget"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <DollarSign className="h-4 w-4" />
+                        Total Anggaran (Rp) *
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          placeholder="3000000000"
+                          {...field}
+                          value={field.value || ''}
+                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Total anggaran program (REQUIRED)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="budgetPerMeal"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Anggaran per Makan (Rp) *</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          placeholder="15000"
+                          {...field}
+                          value={field.value || ''}
+                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Budget per porsi makan (REQUIRED)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="budgetYear"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tahun Anggaran *</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          placeholder="2025"
+                          {...field}
+                          value={field.value || ''}
+                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Tahun fiskal
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Budget Source & DPA */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="budgetSource"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Sumber Anggaran</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Pilih sumber anggaran" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value={BudgetSource.APBN_PUSAT}>APBN Pusat</SelectItem>
+                          <SelectItem value={BudgetSource.APBD_PROVINSI}>APBD Provinsi</SelectItem>
+                          <SelectItem value={BudgetSource.APBD_KABUPATEN}>APBD Kabupaten</SelectItem>
+                          <SelectItem value={BudgetSource.APBD_KOTA}>APBD Kota</SelectItem>
+                          <SelectItem value={BudgetSource.HIBAH}>Hibah</SelectItem>
+                          <SelectItem value={BudgetSource.APBN_DEKONSENTRASI}>APBN Dekonsentrasi</SelectItem>
+                          <SelectItem value={BudgetSource.DAK}>DAK (Dana Alokasi Khusus)</SelectItem>
+                          <SelectItem value={BudgetSource.MIXED}>Campuran (Mixed)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="dpaNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nomor DPA</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="DPA-024.01.2025.XXX"
+                          {...field}
+                          value={field.value || ''}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Dokumen Pelaksanaan Anggaran
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="apbnProgramCode"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Kode Program APBN</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="024.01.2025.123"
+                          {...field}
+                          value={field.value || ''}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Kode program (jika APBN)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Budget Decree */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="budgetDecreeNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nomor SK Penetapan</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="SK-XXX/2025/XXX"
+                          {...field}
+                          value={field.value || ''}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Nomor SK penetapan anggaran
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="budgetDecreeUrl"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>URL Dokumen SK</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="url"
+                          placeholder="https://storage.example.com/sk.pdf"
+                          {...field}
+                          value={field.value || ''}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Link dokumen SK (PDF)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Budget Breakdown */}
+              <Alert>
+                <InfoIcon className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Breakdown Anggaran</strong>: Total breakdown harus sama dengan total anggaran (toleransi 1%)
+                </AlertDescription>
+              </Alert>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="foodBudget"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Anggaran Bahan Makanan</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          placeholder="2100000000"
+                          {...field}
+                          value={field.value || ''}
+                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        60-75% dari total (rekomendasi)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="operationalBudget"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Anggaran Operasional</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          placeholder="450000000"
+                          {...field}
+                          value={field.value || ''}
+                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        15-20% dari total
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="transportBudget"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Anggaran Transport</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          placeholder="210000000"
+                          {...field}
+                          value={field.value || ''}
+                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        5-10% dari total
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="utilityBudget"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Anggaran Utilitas</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          placeholder="90000000"
+                          {...field}
+                          value={field.value || ''}
+                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        3-5% dari total
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="staffBudget"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Anggaran Tenaga</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          placeholder="120000000"
+                          {...field}
+                          value={field.value || ''}
+                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        5-7% dari total
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="otherBudget"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Anggaran Lain-lain</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          placeholder="30000000"
+                          {...field}
+                          value={field.value || ''}
+                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        2-3% dari total
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Budget Approval Notes */}
               <FormField
                 control={form.control}
-                name="budgetPerMeal"
+                name="budgetApprovalNotes"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Anggaran per Makan (Rp)</FormLabel>
+                    <FormLabel>Catatan Persetujuan</FormLabel>
                     <FormControl>
                       <Input
-                        type="number"
-                        placeholder="15000"
+                        placeholder="Program telah disetujui sesuai SK..."
                         {...field}
                         value={field.value || ''}
-                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
                       />
                     </FormControl>
                     <FormDescription>
-                      Anggaran per porsi makan
+                      Catatan persetujuan anggaran (optional)
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

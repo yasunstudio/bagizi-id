@@ -49,7 +49,13 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
 import { toast } from 'sonner'
 
-import { useCreateUser, useUpdateUser, useUser } from '@/features/sppg/user/hooks'
+import { 
+  useCreateUser, 
+  useUpdateUser, 
+  useUser,
+  useDepartmentsForUser,
+  usePositionsForUser,
+} from '@/features/sppg/user/hooks'
 import {
   createUserSchema,
   updateUserSchema,
@@ -70,6 +76,7 @@ export function UserForm({ mode, userId }: UserFormProps) {
   const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
   const [passwordStrength, setPasswordStrength] = useState(0)
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<string | null>(null)
 
   // Hooks
   const { data: existingUser, isLoading: isLoadingUser } = useUser(userId!, {
@@ -77,6 +84,10 @@ export function UserForm({ mode, userId }: UserFormProps) {
   })
   const { mutate: createUser, isPending: isCreating } = useCreateUser()
   const { mutate: updateUser, isPending: isUpdating } = useUpdateUser()
+  
+  // Fetch departments and positions for dropdowns
+  const { data: departments = [], isLoading: isLoadingDepartments } = useDepartmentsForUser()
+  const { data: positions = [], isLoading: isLoadingPositions } = usePositionsForUser(selectedDepartmentId)
 
   const isPending = isCreating || isUpdating
 
@@ -92,8 +103,8 @@ export function UserForm({ mode, userId }: UserFormProps) {
       phone: '',
       firstName: '',
       lastName: '',
-      jobTitle: '',
-      department: '',
+      departmentId: null,
+      positionId: null,
       location: '',
       timezone: 'WIB',
       language: 'id',
@@ -110,8 +121,15 @@ export function UserForm({ mode, userId }: UserFormProps) {
         name: existingUser.name,
         userRole: existingUser.userRole,
         userType: existingUser.userType,
+        departmentId: existingUser.departmentId,
+        positionId: existingUser.positionId,
         rawData: existingUser
       })
+      
+      // Set selected department for position filtering
+      if (existingUser.departmentId) {
+        setSelectedDepartmentId(existingUser.departmentId)
+      }
       
       form.reset({
         email: existingUser.email,
@@ -121,8 +139,8 @@ export function UserForm({ mode, userId }: UserFormProps) {
         phone: existingUser.phone ? formatPhoneDisplay(existingUser.phone) : '',
         firstName: existingUser.firstName || '',
         lastName: existingUser.lastName || '',
-        jobTitle: existingUser.jobTitle || '',
-        department: existingUser.department || '',
+        departmentId: existingUser.departmentId || null,
+        positionId: existingUser.positionId || null,
         location: existingUser.location || '',
         timezone: (existingUser.timezone as 'WIB' | 'WITA' | 'WIT') || 'WIB',
         language: (existingUser.language as 'id' | 'en') || 'id',
@@ -151,8 +169,6 @@ export function UserForm({ mode, userId }: UserFormProps) {
       const phone: string | undefined = rawPhone ? formatPhoneSubmit(rawPhone) : undefined
       const firstName: string | undefined = toOptionalString(createData.firstName)
       const lastName: string | undefined = toOptionalString(createData.lastName)
-      const jobTitle: string | undefined = toOptionalString(createData.jobTitle)
-      const department: string | undefined = toOptionalString(createData.department)
       
       const processedData: CreateUserInput = {
         email: createData.email,
@@ -163,8 +179,8 @@ export function UserForm({ mode, userId }: UserFormProps) {
         phone,
         firstName,
         lastName,
-        jobTitle,
-        department,
+        departmentId: createData.departmentId || null,
+        positionId: createData.positionId || null,
         timezone: createData.timezone,
         language: createData.language,
         isActive: createData.isActive,
@@ -189,8 +205,6 @@ export function UserForm({ mode, userId }: UserFormProps) {
       const phone: string | undefined = rawPhone ? formatPhoneSubmit(rawPhone) : undefined
       const firstName: string | undefined = toOptionalString(updateData.firstName)
       const lastName: string | undefined = toOptionalString(updateData.lastName)
-      const jobTitle: string | undefined = toOptionalString(updateData.jobTitle)
-      const department: string | undefined = toOptionalString(updateData.department)
       const location: string | undefined = toOptionalString(updateData.location)
       
       const processedData: UpdateUserInput = {
@@ -198,8 +212,8 @@ export function UserForm({ mode, userId }: UserFormProps) {
         phone,
         firstName,
         lastName,
-        jobTitle,
-        department,
+        departmentId: updateData.departmentId || null,
+        positionId: updateData.positionId || null,
         location,
         timezone: updateData.timezone,
         language: updateData.language,
@@ -363,6 +377,50 @@ export function UserForm({ mode, userId }: UserFormProps) {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* User Type */}
+            <FormField
+              control={form.control}
+              name="userType"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tipe User *</FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    defaultValue={field.value}
+                    disabled={mode === 'edit' || isPending}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pilih tipe user" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="SPPG_USER">
+                        <div className="flex flex-col items-start">
+                          <span className="font-medium">SPPG User</span>
+                          <span className="text-xs text-muted-foreground">
+                            User regular SPPG dengan akses berdasarkan role
+                          </span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="DEMO_USER">
+                        <div className="flex flex-col items-start">
+                          <span className="font-medium">Demo User</span>
+                          <span className="text-xs text-muted-foreground">
+                            User demo dengan akses terbatas
+                          </span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    Tipe user menentukan kategori akses sistem
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             {/* User Role */}
             <FormField
               control={form.control}
@@ -594,31 +652,92 @@ export function UserForm({ mode, userId }: UserFormProps) {
             <Separator />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Job Title */}
+              {/* Department */}
               <FormField
                 control={form.control}
-                name="jobTitle"
+                name="departmentId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Jabatan</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Kepala Produksi" disabled={isPending} {...field} value={field.value || ''} />
-                    </FormControl>
+                    <FormLabel>Departemen</FormLabel>
+                    <Select
+                      value={field.value || ''}
+                      onValueChange={(value) => {
+                        field.onChange(value || null)
+                        setSelectedDepartmentId(value || null)
+                        // Reset position when department changes
+                        form.setValue('positionId', null)
+                      }}
+                      disabled={isPending}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Pilih departemen" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {departments.length === 0 ? (
+                          <div className="py-6 text-center text-sm text-muted-foreground">
+                            Tidak ada departemen aktif
+                          </div>
+                        ) : (
+                          departments.map((dept) => (
+                            <SelectItem key={dept.id} value={dept.id}>
+                              {dept.departmentName}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Pilih departemen tempat pengguna bekerja
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              {/* Department */}
+              {/* Position */}
               <FormField
                 control={form.control}
-                name="department"
+                name="positionId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Departemen</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Produksi & QC" disabled={isPending} {...field} value={field.value || ''} />
-                    </FormControl>
+                    <FormLabel>Posisi</FormLabel>
+                    <Select
+                      value={field.value || ''}
+                      onValueChange={(value) => field.onChange(value || null)}
+                      disabled={isPending || !selectedDepartmentId}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue 
+                            placeholder={
+                              selectedDepartmentId 
+                                ? "Pilih posisi" 
+                                : "Pilih departemen terlebih dahulu"
+                            } 
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {positions.length === 0 ? (
+                          <div className="py-6 text-center text-sm text-muted-foreground">
+                            {selectedDepartmentId 
+                              ? 'Tidak ada posisi aktif untuk departemen ini'
+                              : 'Pilih departemen terlebih dahulu'}
+                          </div>
+                        ) : (
+                          positions.map((pos) => (
+                            <SelectItem key={pos.id} value={pos.id}>
+                              {pos.positionName}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Pilih posisi/jabatan pengguna (bergantung pada departemen)
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

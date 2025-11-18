@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { CostBreakdownCard } from '@/features/sppg/production/components'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -225,8 +226,30 @@ export default async function ProductionDetailPage({ params }: { params: Promise
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                {/* Cost display temporarily removed - actualCost/estimatedCost fields not yet implemented in schema */}
-                {/* TODO: Add cost calculation based on usageRecords or menu.budgetAllocation */}
+                {/* Cost display with CostBreakdownCard */}
+                {(production.ingredientCost || production.laborCost || production.totalCost) && (
+                  <div className="md:col-span-2">
+                    <CostBreakdownCard
+                      estimatedCost={{
+                        ingredientCost: production.menu?.costPerServing ? production.menu.costPerServing * (production.plannedPortions || 1) : 0,
+                        laborCost: 0,
+                        utilityCost: 0,
+                        otherCosts: 0,
+                        totalCost: production.menu?.costPerServing ? production.menu.costPerServing * (production.plannedPortions || 1) : 0,
+                        costPerMeal: production.menu?.costPerServing || 0
+                      }}
+                      actualCost={production.totalCost ? {
+                        ingredientCost: production.ingredientCost || 0,
+                        laborCost: production.laborCost || 0,
+                        utilityCost: production.utilityCost || 0,
+                        otherCosts: production.otherCosts || 0,
+                        totalCost: production.totalCost,
+                        costPerMeal: production.costPerMeal || 0
+                      } : undefined}
+                      portions={production.actualPortions || production.plannedPortions}
+                    />
+                  </div>
+                )}
                 <div className="flex items-start gap-3">
                   <Thermometer className="h-5 w-5 text-muted-foreground mt-0.5" />
                   <div>

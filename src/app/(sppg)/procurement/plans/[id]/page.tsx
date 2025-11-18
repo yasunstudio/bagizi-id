@@ -13,24 +13,17 @@
 
 import { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
-import Link from 'next/link'
 import { auth } from '@/auth'
 import { db } from '@/lib/prisma'
 import { canManageProcurement } from '@/lib/permissions'
-import { Button } from '@/components/ui/button'
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb'
-import { ArrowLeft, Edit } from 'lucide-react'
+import { ProcurementPageHeader } from '@/components/shared/procurement'
+import { ArrowLeft, Edit, ClipboardList, Factory } from 'lucide-react'
 import { 
-  BudgetBreakdown, 
-  ApprovalWorkflow,
-} from '@/features/sppg/procurement/components'
+  PlanDetail, 
+  PlanActionsWrapper, 
+  PlanRelatedRecords,
+  PlanItemsList 
+} from '@/features/sppg/procurement/plans/components'
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params
@@ -77,7 +70,7 @@ export default async function ProcurementPlanDetailPage({ params }: { params: Pr
     redirect('/dashboard')
   }
 
-  // Fetch plan with multi-tenant isolation
+  // Fetch plan with multi-tenant isolation and related records
   const plan = await db.procurementPlan.findFirst({
     where: {
       id,
@@ -86,14 +79,41 @@ export default async function ProcurementPlanDetailPage({ params }: { params: Pr
     include: {
       sppg: {
         select: {
+          id: true,
+          code: true,
           name: true,
         },
       },
       program: {
         select: {
+          id: true,
           name: true,
         },
       },
+      // Phase 4: Fetch related productions
+      productions: {
+        select: {
+          id: true,
+          productionDate: true,
+          batchNumber: true,
+          plannedPortions: true,
+          actualPortions: true,
+          status: true,
+          totalCost: true,
+          menu: {
+            select: {
+              id: true,
+              menuName: true,
+              mealType: true,
+            },
+          },
+        },
+        orderBy: {
+          productionDate: 'desc',
+        },
+      },
+      // Phase 4: Fetch related distributions (via productions)
+      // Note: We'll get this through productions since distributions link to productions
     },
   })
 
@@ -102,67 +122,59 @@ export default async function ProcurementPlanDetailPage({ params }: { params: Pr
   }
 
   const canEdit = plan.approvalStatus === 'DRAFT' || plan.approvalStatus === 'REVISION'
+  const canCreateProduction = plan.approvalStatus === 'APPROVED'
 
   return (
-    <div className="space-y-6">
-      {/* Breadcrumb */}
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/dashboard">Dashboard</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/procurement">Pengadaan</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/procurement/plans">Rencana Pengadaan</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>{plan.planName}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+    <div className="container mx-auto py-6 space-y-6">
+      <ProcurementPageHeader
+        title={plan.planName}
+        description="Detail rencana pengadaan dan budget planning"
+        icon={ClipboardList}
+        breadcrumbs={['Procurement', 'Plans', plan.planName]}
+        action={[
+          {
+            label: 'Kembali',
+            href: '/procurement/plans',
+            icon: ArrowLeft,
+            variant: 'outline'
+          },
+          ...(canEdit ? [{
+            label: 'Edit',
+            href: `/procurement/plans/${plan.id}/edit`,
+            icon: Edit,
+            variant: 'default' as const
+          }] : []),
+          ...(canCreateProduction ? [{
+            label: 'Buat Produksi',
+            href: `/production/new/from-plan/${plan.id}`,
+            icon: Factory,
+            variant: 'default' as const
+          }] : [])
+        ]}
+      />
 
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">{plan.planName}</h1>
-          <p className="text-muted-foreground mt-1">
-            Detail rencana pengadaan dan budget planning
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" asChild>
-            <Link href="/procurement/plans">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Kembali
-            </Link>
-          </Button>
-          {canEdit && (
-            <Button asChild>
-              <Link href={`/procurement/plans/${plan.id}/edit`}>
-                <Edit className="h-4 w-4 mr-2" />
-                Edit
-              </Link>
-            </Button>
-          )}
-        </div>
-      </div>
+      {/* Plan Actions - Enterprise-grade workflow buttons */}
+      <PlanActionsWrapper 
+        planId={plan.id} 
+        currentStatus={plan.approvalStatus}
+      />
 
-      {/* Approval Workflow */}
-      <ApprovalWorkflow plan={plan} />
+      {/* Plan Detail with all sections */}
+      <PlanDetail plan={plan} />
 
-      {/* Budget Breakdown */}
-      <BudgetBreakdown plan={plan} showChart />
+      {/* Phase 3: Auto-Generated Items List (Purchase List) */}
+      <PlanItemsList 
+        planId={plan.id}
+        autoGeneratedItems={plan.autoGeneratedItems ? JSON.parse(JSON.stringify(plan.autoGeneratedItems)) : null}
+        planStatus={plan.approvalStatus}
+        className="mt-6"
+      />
+
+      {/* Phase 4: Related Productions Display */}
+      <PlanRelatedRecords 
+        productions={plan.productions}
+        planId={plan.id}
+      />
     </div>
   )
 }

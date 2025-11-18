@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
       db.nutritionProgram.count(),
 
       // Total beneficiaries
-      db.schoolBeneficiary.count(),
+      db.school.count(), // ✅ UPDATED (Phase 3)
 
       // Recent SPPG (last 5)
       db.sPPG.findMany({

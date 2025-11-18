@@ -271,7 +271,8 @@ export async function DELETE(
 ) {
   return withSppgAuth(request, async (session) => {
     try {
-      if (!hasPermission(session.user.userRole as UserRole, 'DELETE')) {
+      // Use MENU_MANAGE instead of DELETE - Anyone who can manage menus should be able to delete menu assignments
+      if (!hasPermission(session.user.userRole as UserRole, 'MENU_MANAGE')) {
         return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
       }
 

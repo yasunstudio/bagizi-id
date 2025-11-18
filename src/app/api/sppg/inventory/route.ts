@@ -45,9 +45,9 @@ export async function GET(request: NextRequest) {
       // Parse and validate query parameters
       const { searchParams } = new URL(request.url)
       
-      // Parse category with validation
+      // Parse category with validation (match Prisma enum exactly)
       const categoryParam = searchParams.get('category')
-      const validCategories = ['PROTEIN', 'KARBOHIDRAT', 'SAYUR', 'BUAH', 'SUSU', 'LEMAK', 'BUMBU', 'LAINNYA']
+      const validCategories = ['PROTEIN', 'KARBOHIDRAT', 'SAYURAN', 'BUAH', 'SUSU_OLAHAN', 'BUMBU_REMPAH', 'MINYAK_LEMAK', 'LAINNYA']
       const category = categoryParam && validCategories.includes(categoryParam) 
         ? categoryParam as InventoryCategory 
         : undefined
@@ -129,6 +129,15 @@ export async function GET(request: NextRequest) {
       db.inventoryItem.findMany({
         where,
         include: {
+          foodCategory: {
+            select: {
+              id: true,
+              categoryCode: true,
+              categoryName: true,
+              colorCode: true,
+              iconName: true
+            }
+          },
           preferredSupplier: {
             select: {
               id: true,

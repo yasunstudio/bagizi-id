@@ -75,7 +75,7 @@ export async function GET(
             },
             distribution_deliveries: {
               include: {
-                schoolBeneficiary: true,
+                school: true, // ✅ UPDATED (Phase 3)
               },
             },
           },
@@ -83,7 +83,7 @@ export async function GET(
         vehicle: true, // Include vehicle information
         deliveries: {
           include: {
-            schoolBeneficiary: {
+            school: { // ✅ UPDATED (Phase 3)
               select: {
                 schoolName: true,
                 schoolAddress: true,
@@ -202,7 +202,7 @@ export async function PUT(
         },
         deliveries: {
           include: {
-            schoolBeneficiary: {
+            school: { // ✅ UPDATED (Phase 3)
               select: {
                 schoolName: true,
               },

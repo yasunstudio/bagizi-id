@@ -6,47 +6,50 @@
 
 import { getBaseUrl, getFetchOptions } from '@/lib/api-utils'
 import { ApiResponse } from '../types'
+import { ProgramPageStatistics } from '@/features/sppg/program/types'
+import { ProgramType, TargetGroup, ProgramStatus } from '@prisma/client'
 
 /**
  * Program type matching NutritionProgram model from API responses
+ * ✅ FIXED: Now uses proper Prisma types instead of generic strings
  * Aligned with Prisma schema and actual API endpoint
  */
 export interface Program {
   id: string
-  sppgId?: string
+  sppgId: string  // ✅ REQUIRED - matches Prisma schema
   name: string
-  description?: string | null
+  description: string | null
   programCode: string
-  programType?: string
-  targetGroup?: string
+  programType: ProgramType  // ✅ Prisma enum instead of string
+  targetGroup: TargetGroup  // ✅ Prisma enum instead of string
   
   // Nutrition goals
-  calorieTarget?: number | null
-  proteinTarget?: number | null
-  carbTarget?: number | null
-  fatTarget?: number | null
-  fiberTarget?: number | null
+  calorieTarget: number | null
+  proteinTarget: number | null
+  carbTarget: number | null
+  fatTarget: number | null
+  fiberTarget: number | null
   
   // Schedule
-  startDate?: string | null
-  endDate?: string | null
-  feedingDays?: number[]
-  mealsPerDay?: number
+  startDate: Date  // ✅ Date object instead of string
+  endDate: Date | null
+  feedingDays: number[]
+  mealsPerDay: number
   
   // Budget & Targets
-  totalBudget?: number | null
-  budgetPerMeal?: number | null
+  totalBudget: number | null
+  budgetPerMeal: number | null
   targetRecipients: number
-  currentRecipients?: number
+  currentRecipients: number
   
   // Location
-  implementationArea?: string
-  partnerSchools?: string[]
+  implementationArea: string
+  // partnerSchools removed - use programEnrollments relation instead
   
   // Status & Timestamps
-  status?: string
-  createdAt?: string
-  updatedAt?: string
+  status: ProgramStatus  // ✅ Prisma enum instead of string
+  createdAt: Date  // ✅ Date object instead of string
+  updatedAt: Date  // ✅ Date object instead of string
 }
 
 interface ProgramsFilters {
@@ -148,6 +151,22 @@ export const programsApi = {
     if (!response.ok) {
       const error = await response.json()
       throw new Error(error.error || 'Failed to delete program')
+    }
+
+    return response.json()
+  },
+
+  /**
+   * Get program statistics for dashboard
+   * Fetches aggregated statistics from /api/sppg/program/stats
+   */
+  async getStats(headers?: HeadersInit): Promise<ApiResponse<ProgramPageStatistics>> {
+    const baseUrl = getBaseUrl()
+    const response = await fetch(`${baseUrl}/api/sppg/program/stats`, getFetchOptions(headers))
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to fetch program statistics')
     }
 
     return response.json()

@@ -46,7 +46,15 @@ export async function GET(
               name: true,
               sppgId: true,
               programType: true,
-              targetGroup: true,
+            },
+          },
+          foodCategory: {
+            select: {
+              id: true,
+              categoryCode: true,
+              categoryName: true,
+              colorCode: true,
+              iconName: true,
             },
           },
           ingredients: {
@@ -151,6 +159,7 @@ export async function PUT(
           description: body.description,
           mealType: body.mealType,
           servingSize: body.servingSize,
+          foodCategoryId: body.foodCategoryId,
           preparationTime: body.preparationTime,
           cookingTime: body.cookingTime,
           difficulty: body.difficulty,
@@ -162,6 +171,15 @@ export async function PUT(
               id: true,
               name: true,
               sppgId: true,
+            },
+          },
+          foodCategory: {
+            select: {
+              id: true,
+              categoryCode: true,
+              categoryName: true,
+              colorCode: true,
+              iconName: true,
             },
           },
           ingredients: {
@@ -208,8 +226,9 @@ export async function DELETE(
 ) {
   return withSppgAuth(request, async (session) => {
     try {
-      // Permission Check
-      if (!session.user.userRole || !hasPermission(session.user.userRole as UserRole, 'DELETE')) {
+      // Permission Check - Use MENU_MANAGE instead of DELETE
+      // Anyone who can manage menus should be able to delete them
+      if (!session.user.userRole || !hasPermission(session.user.userRole as UserRole, 'MENU_MANAGE')) {
         return NextResponse.json(
           { success: false, error: 'Insufficient permissions' },
           { status: 403 }

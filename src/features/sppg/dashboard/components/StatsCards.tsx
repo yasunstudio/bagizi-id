@@ -34,11 +34,13 @@ const statItems = [
     title: 'Total Penerima Manfaat',
     icon: Users,
     valueKey: 'current',
+    secondaryKey: 'organizations',
     changeKey: 'percentage',
-    trendKey: 'trend',
     format: (value: number) => value.toLocaleString(),
+    secondaryFormat: (value: number) => `${value} organisasi`,
+    secondaryText: 'terdaftar',
     changeFormat: (value: number) => `${value > 0 ? '+' : ''}${value}%`,
-    changeText: 'dari sebelumnya'
+    changeText: 'dari minggu lalu'
   },
   {
     key: 'activeMenus' as keyof DashboardStats,
@@ -190,8 +192,18 @@ export function StatsCards({ className }: StatsCardsProps) {
                 {item.format(statData[item.valueKey] as number)}
               </div>
               <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                {/* Secondary value (e.g., organization count) */}
+                {item.secondaryKey && (
+                  <>
+                    <Badge variant="outline" className="text-blue-600 border-blue-600/20">
+                      {item.secondaryFormat!(statData[item.secondaryKey] as number)}
+                    </Badge>
+                    <span>{item.secondaryText}</span>
+                  </>
+                )}
+
                 {/* Trend indicator for totalBeneficiaries */}
-                {item.changeKey && item.trendKey && (
+                {item.changeKey && !item.secondaryKey && item.trendKey && (
                   <>
                     {getTrendIcon(statData[item.trendKey] as 'up' | 'down' | 'stable')}
                     <span className={getTrendColor(statData[item.trendKey] as 'up' | 'down' | 'stable')}>

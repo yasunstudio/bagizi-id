@@ -6,18 +6,19 @@
 
 'use client'
 
-import { use } from 'react'
+import React, { use } from 'react'
 import { useRouter } from 'next/navigation'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
-import { useProgram, useProgramWithStats, useDeleteProgram } from '@/features/sppg/program/hooks'
+import { useProgram, useDeleteProgram } from '@/features/sppg/program/hooks'
 import { 
   ProgramDetailHeader,
   ProgramOverviewTab,
   ProgramScheduleTab,
   ProgramBudgetTab,
   ProgramNutritionTab,
-  ProgramMonitoringTab
+  // ProgramMonitoringTab, // 🔒 Hidden - monitoring feature temporarily disabled
+  ProgramEnrollmentsTab
 } from '@/features/sppg/program/components'
 import { toast } from 'sonner'
 
@@ -28,9 +29,18 @@ interface ProgramDetailPageProps {
 export default function ProgramDetailPage({ params }: ProgramDetailPageProps) {
   const router = useRouter()
   const { id } = use(params)
-  const { data: program, isLoading, error } = useProgram(id)
-  const { data: programStats } = useProgramWithStats(id)
+  const { data: program, isLoading, error, refetch } = useProgram(id)
   const { mutate: deleteProgram } = useDeleteProgram()
+
+  // Refetch data when page is focused (user comes back from edit page)
+  React.useEffect(() => {
+    const handleFocus = () => {
+      refetch()
+    }
+    
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [refetch])
 
   const handleBack = () => {
     router.push('/program')
@@ -99,12 +109,13 @@ export default function ProgramDetailPage({ params }: ProgramDetailPageProps) {
 
       {/* Tabs Section */}
       <Tabs defaultValue="overview" className="w-full">
+        {/* Updated to show Beneficiary Enrollments instead of Schools */}
         <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="overview">Ringkasan</TabsTrigger>
           <TabsTrigger value="schedule">Jadwal</TabsTrigger>
           <TabsTrigger value="budget">Anggaran</TabsTrigger>
           <TabsTrigger value="nutrition">Nutrisi</TabsTrigger>
-          <TabsTrigger value="monitoring">Monitoring</TabsTrigger>
+          <TabsTrigger value="enrollments">Penerima Manfaat</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -123,9 +134,15 @@ export default function ProgramDetailPage({ params }: ProgramDetailPageProps) {
           <ProgramNutritionTab program={program} onEdit={handleEdit} />
         </TabsContent>
 
-        <TabsContent value="monitoring">
-          <ProgramMonitoringTab program={program} programStats={programStats} programId={id} />
+        <TabsContent value="enrollments">
+          <ProgramEnrollmentsTab programId={id} />
         </TabsContent>
+
+        {/* 🔒 MONITORING TAB HIDDEN - Uncomment to re-enable
+        <TabsContent value="monitoring">
+          <ProgramMonitoringTab programId={id} />
+        </TabsContent>
+        */}
       </Tabs>
     </div>
   )

@@ -50,7 +50,7 @@ import { cn } from '@/lib/utils'
 import { useMenu, useDeleteMenu } from '@/features/sppg/menu/hooks'
 import { 
   IngredientsList,
-  RecipeStepEditor, 
+  RecipeStepsManager, 
   NutritionPreview, 
   CostBreakdownCard,
   MenuActionsToolbar
@@ -158,7 +158,7 @@ export default function MenuDetailPage({ params }: MenuDetailPageProps) {
         </div>
 
         {/* Actions Toolbar */}
-        <div data-toolbar>
+        <div data-toolbar className="flex flex-wrap items-center gap-3">
           <MenuActionsToolbar
             menuId={menu.id}
             menuName={menu.menuName}
@@ -167,6 +167,19 @@ export default function MenuDetailPage({ params }: MenuDetailPageProps) {
             }}
             onDelete={handleDelete}
           />
+          
+          {/* Kitchen View Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            asChild
+            className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950"
+          >
+            <Link href={`/menu/${menu.id}/kitchen`}>
+              <ChefHat className="h-4 w-4 mr-2" />
+              Tampilan Dapur
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -495,7 +508,7 @@ export default function MenuDetailPage({ params }: MenuDetailPageProps) {
 
         {/* Tab 3: Recipe Steps */}
         <TabsContent value="recipe" className="space-y-6">
-          <RecipeStepEditor menuId={menu.id} />
+          <RecipeStepsManager menuId={menu.id} menuName={menu.menuName} />
         </TabsContent>
 
         {/* Tab 4: Nutrition */}

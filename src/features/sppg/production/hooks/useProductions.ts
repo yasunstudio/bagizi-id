@@ -131,7 +131,8 @@ export function useQualityChecks(productionId: string | undefined) {
     },
     select: (response) => response.data,
     enabled: !!productionId,
-    staleTime: 2 * 60 * 1000, // 2 minutes
+    staleTime: 0, // Always fetch fresh data
+    refetchOnMount: 'always', // Always refetch when component mounts
   })
 }
 
@@ -372,9 +373,14 @@ export function useAddQualityCheck() {
   return useMutation({
     mutationFn: ({ productionId, data }: { productionId: string; data: QualityCheckInput }) =>
       productionApi.addQualityCheck(productionId, data),
-    onSuccess: (response, variables) => {
-      // Invalidate quality checks to refetch
-      queryClient.invalidateQueries({
+    onSuccess: async (response, variables) => {
+      // Invalidate and refetch quality checks immediately
+      await queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.qualityChecks(variables.productionId),
+      })
+
+      // Refetch quality checks to ensure fresh data
+      await queryClient.refetchQueries({
         queryKey: QUERY_KEYS.qualityChecks(variables.productionId),
       })
 

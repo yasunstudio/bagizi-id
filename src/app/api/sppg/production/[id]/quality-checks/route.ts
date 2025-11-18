@@ -38,10 +38,20 @@ export async function GET(
         return NextResponse.json({ error: 'Production not found' }, { status: 404 })
       }
 
-      // Get quality checks
+      // Get quality checks with user info
       const qualityChecks = await db.qualityControl.findMany({
         where: {
           productionId: id,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              userRole: true,
+            },
+          },
         },
         orderBy: {
           checkTime: 'desc',
@@ -70,7 +80,7 @@ export async function GET(
  * @rbac Protected by withSppgAuth
  * @audit Automatic logging
  */
-export async function PUT(
+export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -88,6 +98,20 @@ export async function PUT(
 
       if (!production) {
         return NextResponse.json({ error: 'Production not found' }, { status: 404 })
+      }
+
+      // 🔒 Role Validation: Only QC Staff or Production Manager can perform quality checks
+      const allowedRoles = ['SPPG_STAFF_QC', 'SPPG_PRODUKSI_MANAGER', 'SPPG_KEPALA', 'SPPG_ADMIN']
+      if (!allowedRoles.includes(session.user.userRole)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Akses ditolak',
+            message:
+              'Hanya Staff QC atau Manager Produksi yang dapat melakukan pemeriksaan quality control',
+          },
+          { status: 403 }
+        )
       }
 
       const body = await request.json()

@@ -6,22 +6,20 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { withSppgAuth } from '@/lib/api-middleware'
+import { withSppgAuth, hasPermission } from '@/lib/api-middleware'
 import { db } from '@/lib/prisma'
-import { UserRole } from '@prisma/client'
-import { hasPermission } from '@/lib/permissions'
 import { 
   procurementPlanCreateSchema, 
   procurementPlanFiltersSchema
-} from '@/features/sppg/procurement/schemas'
+} from '@/features/sppg/procurement/plans/schemas'
 
 // ================================ GET /api/sppg/procurement/plans ================================
 
 export async function GET(request: NextRequest) {
   return withSppgAuth(request, async (session) => {
     try {
-      // Permission Check
-      if (!session.user.userRole || !hasPermission(session.user.userRole as UserRole, 'READ')) {
+      // Permission Check - User must have read permission
+      if (!hasPermission(session.user.userRole, 'user:read')) {
         return NextResponse.json({ 
           success: false, 
           error: 'Insufficient permissions' 
@@ -44,7 +42,8 @@ export async function GET(request: NextRequest) {
       const filters = procurementPlanFiltersSchema.parse(processedParams)
 
       // Build database query with multi-tenant filtering
-      const where = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const where: any = {
         // Multi-tenant: Only get plans from user's SPPG
         sppgId: session.user.sppgId!,
         
@@ -52,14 +51,16 @@ export async function GET(request: NextRequest) {
         ...(filters.search && {
           OR: [
             { planName: { contains: filters.search, mode: 'insensitive' as const } },
-          { notes: { contains: filters.search, mode: 'insensitive' as const } }
-        ]
-      }),
-      ...(filters.approvalStatus && { approvalStatus: filters.approvalStatus }),
-      ...(filters.planYear && { planYear: filters.planYear }),
-      ...(filters.planQuarter && { planQuarter: filters.planQuarter }),
-      ...(filters.programId && { programId: filters.programId }),
-    } as const
+            { notes: { contains: filters.search, mode: 'insensitive' as const } }
+          ]
+        }),
+        ...(filters.approvalStatus && filters.approvalStatus.length > 0 && { 
+          approvalStatus: { in: filters.approvalStatus } 
+        }),
+        ...(filters.planYear && { planYear: filters.planYear }),
+        ...(filters.planQuarter && { planQuarter: filters.planQuarter }),
+        ...(filters.programId && { programId: filters.programId }),
+      }
 
     // 5. Execute queries with pagination
     const [plans, total] = await Promise.all([
@@ -70,6 +71,23 @@ export async function GET(request: NextRequest) {
             select: {
               id: true,
               name: true,
+            }
+          },
+          program: {
+            select: {
+              id: true,
+              name: true,
+              programCode: true
+            }
+          },
+          // ✅ NEW: Include menu plan relation
+          menuPlan: {
+            select: {
+              id: true,
+              name: true,
+              totalMenus: true,
+              totalEstimatedCost: true,
+              status: true
             }
           },
           procurements: {
@@ -148,164 +166,197 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return withSppgAuth(request, async (session) => {
     try {
-      // Permission Check
-      if (!session.user.userRole || !hasPermission(session.user.userRole as UserRole, 'PROCUREMENT_MANAGE')) {
-        return NextResponse.json({ 
-        success: false, 
-        error: 'SPPG access required' 
-      }, { status: 403 })
-    }
-
-    // 3. Role Check - Only certain roles can create procurement plans
-    const allowedRoles = [
-      'SPPG_KEPALA',
-      'SPPG_ADMIN',
-      'SPPG_AKUNTAN',
-      'SPPG_PRODUKSI_MANAGER'
-    ]
-    
-    if (!session.user.userRole || !allowedRoles.includes(session.user.userRole)) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Insufficient permissions - Only managers can create procurement plans' 
-      }, { status: 403 })
-    }
-
-    // 4. Parse and validate request body
-    const body = await request.json()
-    const validated = procurementPlanCreateSchema.parse(body)
-
-    // Verify program belongs to SPPG if programId provided
-    if (validated.programId) {
-      const programWhere: {
-        id: string
-        sppgId: string
-      } = {
-        id: validated.programId,
-        sppgId: session.user.sppgId!
-      }
-      const program = await db.nutritionProgram.findFirst({
-        where: programWhere
-      })
-
-      if (!program) {
+      // Permission Check - User must have procurement create permission
+      if (!hasPermission(session.user.userRole, 'procurement:create')) {
         return NextResponse.json({ 
           success: false, 
-          error: 'Program not found or does not belong to your SPPG' 
-        }, { status: 404 })
+          error: 'Insufficient permissions - Only managers can create procurement plans' 
+        }, { status: 403 })
       }
-    }
 
-    // Check for duplicate plan (same month/year)
-    const planWhere: {
-      sppgId: string
-      planMonth: string
-      planYear: number
-    } = {
-      sppgId: session.user.sppgId!,
-      planMonth: validated.planMonth,
-      planYear: validated.planYear
-    }
-    const existingPlan = await db.procurementPlan.findFirst({
-      where: planWhere
-    })
+      // Parse and validate request body
+      const body = await request.json()
+      const validated = procurementPlanCreateSchema.parse(body)
 
-    if (existingPlan) {
-      return NextResponse.json({ 
-        success: false, 
-        error: `Procurement plan for ${validated.planMonth} already exists` 
-      }, { status: 409 })
-    }
-
-    // Calculate initial budget allocation
-    const allocatedBudget = 0 // Will be updated as items are added
-    const usedBudget = 0 // Will be updated as procurements are created
-    const remainingBudget = validated.totalBudget
-
-    // Create procurement plan
-    const plan = await db.procurementPlan.create({
-      data: {
-        sppgId: session.user.sppgId!,
-        programId: validated.programId,
-        planName: validated.planName,
-        planMonth: validated.planMonth,
-        planYear: validated.planYear,
-        planQuarter: validated.planQuarter,
-        totalBudget: validated.totalBudget,
-        allocatedBudget,
-        usedBudget,
-        remainingBudget,
-        proteinBudget: validated.proteinBudget,
-        carbBudget: validated.carbBudget,
-        vegetableBudget: validated.vegetableBudget,
-        fruitBudget: validated.fruitBudget,
-        otherBudget: validated.otherBudget,
-        targetRecipients: validated.targetRecipients,
-        targetMeals: validated.targetMeals,
-        costPerMeal: validated.costPerMeal,
-        notes: validated.notes,
-        emergencyBuffer: validated.emergencyBuffer,
-        approvalStatus: 'DRAFT',
-        submittedBy: session.user.id
-      },
-      include: {
-        sppg: {
-          select: {
-            id: true,
-            name: true
+      // Verify menu plan if provided (for "from menu" creation)
+      if (validated.menuPlanId) {
+        const menuPlan = await db.menuPlan.findFirst({
+          where: {
+            id: validated.menuPlanId,
+            sppgId: session.user.sppgId!,
+            status: 'APPROVED', // Only approved menu plans can be used
+          },
+          include: {
+            assignments: {
+              include: {
+                menu: {
+                  include: {
+                    ingredients: {
+                      include: {
+                        inventoryItem: true
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
-        },
-        program: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
-        procurements: {
-          select: {
-            id: true,
-            status: true,
-            totalAmount: true
-          }
+        })
+
+        if (!menuPlan) {
+          return NextResponse.json({ 
+            success: false, 
+            error: 'Menu plan not found, not approved, or does not belong to your SPPG' 
+          }, { status: 404 })
+        }
+
+        // Validate that menu plan belongs to same program if programId provided
+        if (validated.programId && menuPlan.programId !== validated.programId) {
+          return NextResponse.json({ 
+            success: false, 
+            error: 'Menu plan does not belong to the selected program' 
+          }, { status: 400 })
         }
       }
-    })
 
-    // 9. Success response
-    return NextResponse.json({
-      success: true,
-      data: plan,
-      message: 'Procurement plan created successfully'
-    }, { status: 201 })
+      // Verify program belongs to SPPG if programId provided
+      if (validated.programId) {
+        const programWhere: {
+          id: string
+          sppgId: string
+        } = {
+          id: validated.programId,
+          sppgId: session.user.sppgId!
+        }
+        const program = await db.nutritionProgram.findFirst({
+          where: programWhere
+        })
 
-  } catch (error) {
-    console.error('POST /api/sppg/procurement/plans error:', error)
-    
-    // Validation error
-    if (error instanceof Error && error.name === 'ZodError') {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Validation failed',
-        details: error 
-      }, { status: 400 })
-    }
+        if (!program) {
+          return NextResponse.json({ 
+            success: false, 
+            error: 'Program not found or does not belong to your SPPG' 
+          }, { status: 404 })
+        }
+      }
 
-    // Prisma error
-    if (error && typeof error === 'object' && 'code' in error) {
-      if (error.code === 'P2002') {
+      // Check for duplicate plan (same month/year)
+      const planWhere: {
+        sppgId: string
+        planMonth: string
+        planYear: number
+      } = {
+        sppgId: session.user.sppgId!,
+        planMonth: validated.planMonth,
+        planYear: validated.planYear
+      }
+      const existingPlan = await db.procurementPlan.findFirst({
+        where: planWhere
+      })
+
+      if (existingPlan) {
         return NextResponse.json({ 
           success: false, 
-          error: 'Procurement plan with this code already exists' 
+          error: `Procurement plan for ${validated.planMonth}/${validated.planYear} already exists` 
         }, { status: 409 })
       }
-    }
 
-    // Internal server error
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to create procurement plan',
-      details: process.env.NODE_ENV === 'development' ? error : undefined
-    }, { status: 500 })
-  }
+      // Calculate initial budget allocation
+      const allocatedBudget = 0 // Will be updated as items are added
+      const usedBudget = 0 // Will be updated as procurements are created
+      const remainingBudget = validated.totalBudget
+
+      // Create procurement plan
+      const plan = await db.procurementPlan.create({
+        data: {
+          sppgId: session.user.sppgId!,
+          programId: validated.programId,
+          planName: validated.planName,
+          planMonth: validated.planMonth,
+          planYear: validated.planYear,
+          planQuarter: validated.planQuarter,
+          totalBudget: validated.totalBudget,
+          allocatedBudget,
+          usedBudget,
+          remainingBudget,
+          proteinBudget: validated.proteinBudget,
+          carbBudget: validated.carbBudget,
+          vegetableBudget: validated.vegetableBudget,
+          fruitBudget: validated.fruitBudget,
+          otherBudget: validated.otherBudget,
+          targetRecipients: validated.targetRecipients,
+          targetMeals: validated.targetMeals,
+          costPerMeal: validated.costPerMeal,
+          notes: validated.notes,
+          emergencyBuffer: validated.emergencyBuffer,
+          // Menu plan integration fields
+          menuPlanId: validated.menuPlanId,
+          menuBasedBudget: validated.menuBasedBudget,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          autoGeneratedItems: validated.autoGeneratedItems as any,
+          submissionNotes: validated.submissionNotes,
+          // Status
+          approvalStatus: 'DRAFT',
+          submittedBy: session.user.id
+        },
+        include: {
+          sppg: {
+            select: {
+              id: true,
+              name: true
+            }
+          },
+          program: {
+            select: {
+              id: true,
+              name: true
+            }
+          },
+          procurements: {
+            select: {
+              id: true,
+              status: true,
+              totalAmount: true
+            }
+          }
+        }
+      })
+
+      // Success response
+      return NextResponse.json({
+        success: true,
+        data: plan,
+        message: 'Procurement plan created successfully'
+      }, { status: 201 })
+
+    } catch (error) {
+      console.error('POST /api/sppg/procurement/plans error:', error)
+      
+      // Validation error
+      if (error instanceof Error && error.name === 'ZodError') {
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Validation failed',
+          details: error 
+        }, { status: 400 })
+      }
+
+      // Prisma error
+      if (error && typeof error === 'object' && 'code' in error) {
+        if (error.code === 'P2002') {
+          return NextResponse.json({ 
+            success: false, 
+            error: 'Procurement plan with this code already exists' 
+          }, { status: 409 })
+        }
+      }
+
+      // Internal server error
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Failed to create procurement plan',
+        details: process.env.NODE_ENV === 'development' ? error : undefined
+      }, { status: 500 })
+    }
   })
 }

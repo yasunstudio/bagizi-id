@@ -88,6 +88,15 @@ export async function GET(request: NextRequest) {
               sppgId: true
             }
           },
+          foodCategory: {
+            select: {
+              id: true,
+              categoryCode: true,
+              categoryName: true,
+              colorCode: true,
+              iconName: true
+            }
+          },
           ingredients: {
             select: {
               id: true,
@@ -264,6 +273,15 @@ export async function POST(request: NextRequest) {
             id: true,
             name: true,
             sppgId: true
+          }
+        },
+        foodCategory: {
+          select: {
+            id: true,
+            categoryCode: true,
+            categoryName: true,
+            colorCode: true,
+            iconName: true
           }
         },
         _count: {

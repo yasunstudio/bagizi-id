@@ -330,14 +330,14 @@ export function ProductionStatus({ production, className, onStatusChange }: Prod
   }
 
   const handleCompleteProduction = async (data: CompleteProductionInput) => {
-    // Step 1: Complete production (COOKING → QUALITY_CHECK)
+    // Complete production (COOKING → QUALITY_CHECK)
     completeProduction(
       { id: production.id, data },
       {
         onSuccess: async () => {
           setShowCompleteDialog(false)
           
-          // Step 2: Automatically record stock usage
+          // Automatically record stock usage
           try {
             toast.info('Mencatat penggunaan bahan...')
             
@@ -347,16 +347,18 @@ export function ProductionStatus({ production, className, onStatusChange }: Prod
             
             if (stockUsageResult.success) {
               toast.success(
-                `✅ Stock usage recorded: ${stockUsageResult.data?.recordsCreated} ingredients, ` +
+                `✅ Penggunaan bahan tercatat: ${stockUsageResult.data?.recordsCreated} bahan, ` +
                 `Total: ${new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(stockUsageResult.data?.totalCost || 0)}`
               )
             }
           } catch (error) {
-            // Non-blocking error - production is still marked complete
+            // Non-blocking error - production is still completed
             console.error('Failed to record stock usage:', error)
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error'
             toast.warning(
-              'Produksi selesai, tapi gagal mencatat penggunaan bahan. ' +
-              'Silakan rekam manual dari detail produksi.'
+              `⚠️ Gagal mencatat penggunaan bahan: ${errorMessage}. ` +
+              'Silakan rekam manual dari detail produksi.',
+              { duration: 5000 }
             )
           }
           
@@ -482,12 +484,14 @@ export function ProductionStatus({ production, className, onStatusChange }: Prod
                 {formatDateTime(production.plannedStartTime)} -{' '}
                 {formatDateTime(production.plannedEndTime)}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Durasi:{' '}
-                {formatDuration(
-                  calculateDuration(production.plannedStartTime, production.plannedEndTime)
-                )}
-              </p>
+              {production.plannedStartTime && production.plannedEndTime && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Durasi:{' '}
+                  {formatDuration(
+                    calculateDuration(production.plannedStartTime, production.plannedEndTime)
+                  )}
+                </p>
+              )}
             </div>
 
             {/* Actual Time */}

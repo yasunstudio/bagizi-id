@@ -21,6 +21,7 @@ export interface Menu {
   menuCode: string
   description?: string | null
   mealType: MealType
+  foodCategoryId?: string | null // Food category classification
   servingSize: number // Porsi per orang (gram)
   
   // Cost Information

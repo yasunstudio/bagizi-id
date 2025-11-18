@@ -287,6 +287,8 @@ export function useUpdateUser() {
                     createdAt: updatedUser.createdAt,
                     updatedAt: updatedUser.updatedAt,
                     sppg: updatedUser.sppg,
+                    department: updatedUser.department,
+                    position: updatedUser.position,
                   }
                 : user
             ),

@@ -12,7 +12,7 @@ import type {
   DeliveryTracking,
   DistributionSchedule,
   FoodDistribution,
-  SchoolBeneficiary,
+  School, // ✅ UPDATED (Phase 3): Changed from SchoolBeneficiary
   DeliveryStatus,
   PhotoType,
   IssueType,
@@ -67,7 +67,7 @@ export type DeliveryWithRelations = DistributionDelivery & {
     }
   }
   distribution: FoodDistribution | null
-  schoolBeneficiary: SchoolBeneficiary | null
+  school: School | null // ✅ UPDATED (Phase 3): Changed from schoolBeneficiary
   photos: DeliveryPhoto[]
   issues: DeliveryIssue[]
   trackingPoints: DeliveryTracking[]
@@ -81,7 +81,7 @@ export type DeliveryListItem = Pick<
   | 'id'
   | 'scheduleId'
   | 'distributionId'
-  | 'schoolBeneficiaryId'
+  | 'schoolId' // ✅ UPDATED (Phase 3)
   | 'targetName'
   | 'targetAddress'
   | 'plannedTime'
@@ -106,7 +106,7 @@ export type DeliveryListItem = Pick<
     }
   }
   distribution?: Pick<FoodDistribution, 'id' | 'distributionCode'> | null
-  schoolBeneficiary?: Pick<SchoolBeneficiary, 'id' | 'schoolName' | 'schoolAddress'> | null
+  school?: Pick<School, 'id' | 'schoolName' | 'schoolAddress'> | null // ✅ UPDATED (Phase 3)
   _count?: {
     photos: number
     issues: number
@@ -194,7 +194,7 @@ export interface DeliveryStatistics {
 export interface DeliveryFilters {
   scheduleId?: string
   distributionId?: string
-  schoolBeneficiaryId?: string
+  schoolId?: string // ✅ UPDATED (Phase 3)
   status?: string | string[] // String values: "ASSIGNED", "DEPARTED", "DELIVERED", "FAILED"
   driverName?: string
   hasIssues?: boolean
@@ -430,7 +430,7 @@ export const deliveryListInclude = {
       distributionCode: true,
     }
   },
-  schoolBeneficiary: {
+  school: { // ✅ UPDATED (Phase 3)
     select: {
       id: true,
       schoolName: true,
@@ -468,7 +468,7 @@ export const deliveryDetailInclude = {
     }
   },
   distribution: true,
-  schoolBeneficiary: true,
+  school: true, // ✅ UPDATED (Phase 3)
   photos: {
     orderBy: {
       takenAt: 'desc' as const

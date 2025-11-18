@@ -144,8 +144,9 @@ export function useProgramSummary() {
  * const { mutate: createProgram, isPending } = useCreateProgram()
  * 
  * createProgram({
- *   name: 'Program Makan Siang SD',
- *   programType: 'SCHOOL_FEEDING',
+ *   name: 'Program Makan Bergizi Gratis SD',
+ *   programType: 'FREE_NUTRITIOUS_MEAL',
+ *   allowedTargetGroups: ['SCHOOL_CHILDREN'],
  *   ...
  * }, {
  *   onSuccess: (program) => {
@@ -228,14 +229,18 @@ export function useUpdateProgram() {
       
       return { previousProgram }
     },
-    onSuccess: (updatedProgram, { id }) => {
+    onSuccess: async (updatedProgram, { id }) => {
       // Update detail cache dengan data from server
       queryClient.setQueryData(programKeys.detail(id), updatedProgram)
       
-      // Invalidate related caches
-      queryClient.invalidateQueries({ queryKey: programKeys.lists() })
-      queryClient.invalidateQueries({ queryKey: programKeys.stats(id) })
-      queryClient.invalidateQueries({ queryKey: programKeys.summary() })
+      // Invalidate and refetch related caches
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: programKeys.lists() }),
+        queryClient.invalidateQueries({ queryKey: programKeys.stats(id) }),
+        queryClient.invalidateQueries({ queryKey: programKeys.summary() }),
+        // Force refetch detail page
+        queryClient.refetchQueries({ queryKey: programKeys.detail(id) })
+      ])
       
       toast.success('Program berhasil diperbarui')
     },
@@ -322,7 +327,7 @@ export function useUpdateProgramStatus() {
       status 
     }: { 
       id: string
-      status: 'ACTIVE' | 'INACTIVE' | 'COMPLETED' | 'DRAFT' | 'ARCHIVED'
+      status: 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'CANCELLED' | 'DRAFT' | 'ARCHIVED'
     }) => {
       const result = await programApi.updateStatus(id, status)
       
@@ -338,15 +343,16 @@ export function useUpdateProgramStatus() {
       queryClient.invalidateQueries({ queryKey: programKeys.lists() })
       queryClient.invalidateQueries({ queryKey: programKeys.summary() })
       
-      const statusLabel = {
+      const statusLabel: Record<string, string> = {
         ACTIVE: 'Aktif',
-        INACTIVE: 'Tidak Aktif',
+        PAUSED: 'Dijeda',
         COMPLETED: 'Selesai',
+        CANCELLED: 'Dibatalkan',
         DRAFT: 'Draft',
         ARCHIVED: 'Diarsipkan'
-      }[updatedProgram.status]
+      }
       
-      toast.success(`Status program diubah menjadi "${statusLabel}"`)
+      toast.success(`Status program diubah menjadi "${statusLabel[updatedProgram.status] || updatedProgram.status}"`)
     },
     onError: (error: Error) => {
       toast.error('Gagal mengubah status program', {

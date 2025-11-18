@@ -84,18 +84,66 @@ interface QualityCheck {
   actionTaken?: string | null
   checkTime: Date
   checkedBy: string
+  user?: {
+    id: string
+    name: string
+    email: string
+    userRole: string | null
+  }
 }
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const CHECK_TYPES: { value: QualityCheckType; label: string; icon: typeof Thermometer }[] = [
-  { value: 'TEMPERATURE', label: 'Suhu', icon: Thermometer },
-  { value: 'HYGIENE', label: 'Kebersihan', icon: Shield },
-  { value: 'TASTE', label: 'Rasa', icon: Utensils },
-  { value: 'APPEARANCE', label: 'Penampilan', icon: Eye },
-  { value: 'SAFETY', label: 'Keamanan', icon: Award },
+const CHECK_TYPES: { 
+  value: QualityCheckType
+  label: string
+  icon: typeof Thermometer
+  parameterExample: string
+  expectedValueExample: string
+  actualValueExample: string
+}[] = [
+  { 
+    value: 'TEMPERATURE', 
+    label: 'Suhu', 
+    icon: Thermometer,
+    parameterExample: 'Suhu makanan saat disajikan',
+    expectedValueExample: '≥ 60°C',
+    actualValueExample: '65°C'
+  },
+  { 
+    value: 'HYGIENE', 
+    label: 'Kebersihan', 
+    icon: Shield,
+    parameterExample: 'Kebersihan area dapur',
+    expectedValueExample: 'Tidak ada kontaminasi',
+    actualValueExample: 'Bersih'
+  },
+  { 
+    value: 'TASTE', 
+    label: 'Rasa', 
+    icon: Utensils,
+    parameterExample: 'Rasa makanan',
+    expectedValueExample: 'Sesuai resep standar',
+    actualValueExample: 'Sesuai'
+  },
+  { 
+    value: 'APPEARANCE', 
+    label: 'Penampilan', 
+    icon: Eye,
+    parameterExample: 'Penampilan visual makanan',
+    expectedValueExample: 'Menarik dan rapi',
+    actualValueExample: 'Sangat baik'
+  },
+  { 
+    value: 'SAFETY', 
+    label: 'Keamanan', 
+    icon: Award,
+    parameterExample: 'Keamanan pangan',
+    expectedValueExample: 'Tidak ada bahaya',
+    actualValueExample: 'Aman'
+  },
 ]
 
 const SEVERITY_LEVELS: { value: Severity; label: string; className: string }[] = [
@@ -127,6 +175,19 @@ function getSeverityLabel(severity: string) {
 function getSeverityClassName(severity: string) {
   const severityLevel = SEVERITY_LEVELS.find((s) => s.value === severity)
   return severityLevel?.className || ''
+}
+
+function getRoleLabel(role: string): string {
+  const roleLabels: Record<string, string> = {
+    'SPPG_STAFF_QC': 'Staff QC',
+    'SPPG_PRODUKSI_MANAGER': 'Manager Produksi',
+    'SPPG_KEPALA': 'Kepala SPPG',
+    'SPPG_ADMIN': 'Admin SPPG',
+    'SPPG_AHLI_GIZI': 'Ahli Gizi',
+    'SPPG_STAFF_DAPUR': 'Staff Dapur',
+    'SPPG_STAFF_DISTRIBUSI': 'Staff Distribusi',
+  }
+  return roleLabels[role] || role
 }
 
 function calculateOverallScore(checks: QualityCheck[]): number {
@@ -169,6 +230,10 @@ function AddQualityCheckDialog({
     },
   })
 
+  // Get current check type for dynamic placeholders
+  const currentCheckType = form.watch('checkType')
+  const selectedType = CHECK_TYPES.find(t => t.value === currentCheckType)
+
   const onSubmit = (data: QualityCheckCreateInput) => {
     addCheck(
       { productionId, data },
@@ -189,6 +254,32 @@ function AddQualityCheckDialog({
           <DialogDescription>Tambahkan pemeriksaan kualitas baru untuk produksi ini</DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 py-4">
+          {/* Info Card */}
+          {selectedType && (
+            <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+              <div className="flex items-center gap-2 font-medium">
+                {(() => {
+                  const Icon = selectedType.icon
+                  return <Icon className="h-5 w-5 text-primary" />
+                })()}
+                <span>Pemeriksaan {selectedType.label}</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {currentCheckType === 'TEMPERATURE' && 'Periksa suhu makanan untuk memastikan keamanan dan kualitas'}
+                {currentCheckType === 'HYGIENE' && 'Periksa kebersihan area produksi, peralatan, dan personel'}
+                {currentCheckType === 'TASTE' && 'Periksa rasa, tekstur, dan kematangan makanan'}
+                {currentCheckType === 'APPEARANCE' && 'Periksa penampilan visual, warna, dan penyajian makanan'}
+                {currentCheckType === 'SAFETY' && 'Periksa keamanan pangan dan tidak ada kontaminasi'}
+              </p>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2 border-t">
+                <Shield className="h-3 w-3" />
+                <span>
+                  <strong>Catatan:</strong> Quality Control sebaiknya dilakukan oleh <strong>Staff QC</strong> atau <strong>Manager Produksi</strong>
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Check Type & Parameter */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -220,15 +311,18 @@ function AddQualityCheckDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="parameter">Parameter</Label>
+              <Label htmlFor="parameter">Parameter Pemeriksaan</Label>
               <Input
                 id="parameter"
                 {...form.register('parameter')}
-                placeholder="Contoh: Suhu makanan"
+                placeholder={selectedType?.parameterExample || 'Contoh: Suhu makanan'}
               />
               {form.formState.errors.parameter && (
                 <p className="text-sm text-destructive">{form.formState.errors.parameter.message}</p>
               )}
+              <p className="text-xs text-muted-foreground">
+                Jelaskan apa yang diperiksa. Contoh: {selectedType?.parameterExample}
+              </p>
             </div>
           </div>
 
@@ -239,27 +333,33 @@ function AddQualityCheckDialog({
               <Input
                 id="expectedValue"
                 {...form.register('expectedValue')}
-                placeholder="Contoh: 85°C"
+                placeholder={selectedType?.expectedValueExample || 'Contoh: ≥ 60°C'}
               />
+              <p className="text-xs text-muted-foreground">
+                Standar yang harus dipenuhi. Contoh: {selectedType?.expectedValueExample}
+              </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="actualValue">Nilai Aktual</Label>
+              <Label htmlFor="actualValue">Nilai Aktual (Hasil Pemeriksaan)</Label>
               <Input
                 id="actualValue"
                 {...form.register('actualValue')}
-                placeholder="Contoh: 87°C"
+                placeholder={selectedType?.actualValueExample || 'Contoh: 65°C'}
               />
               {form.formState.errors.actualValue && (
                 <p className="text-sm text-destructive">{form.formState.errors.actualValue.message}</p>
               )}
+              <p className="text-xs text-muted-foreground">
+                Hasil yang didapat. Contoh: {selectedType?.actualValueExample}
+              </p>
             </div>
           </div>
 
           {/* Passed & Score */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="passed">Status</Label>
+              <Label htmlFor="passed">Status Pemeriksaan</Label>
               <Select
                 value={form.watch('passed') ? 'true' : 'false'}
                 onValueChange={(value) => form.setValue('passed', value === 'true')}
@@ -271,21 +371,24 @@ function AddQualityCheckDialog({
                   <SelectItem value="true">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 text-green-600" />
-                      <span>Lulus</span>
+                      <span>✅ Lulus</span>
                     </div>
                   </SelectItem>
                   <SelectItem value="false">
                     <div className="flex items-center gap-2">
                       <XCircle className="h-4 w-4 text-red-600" />
-                      <span>Tidak Lulus</span>
+                      <span>❌ Tidak Lulus</span>
                     </div>
                   </SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Apakah hasil sesuai standar?
+              </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="score">Skor (0-100)</Label>
+              <Label htmlFor="score">Skor (0-100) (Opsional)</Label>
               <Input
                 id="score"
                 type="number"
@@ -297,10 +400,13 @@ function AddQualityCheckDialog({
               {form.formState.errors.score && (
                 <p className="text-sm text-destructive">{form.formState.errors.score.message}</p>
               )}
+              <p className="text-xs text-muted-foreground">
+                Nilai kualitas 0-100
+              </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="severity">Tingkat Keparahan</Label>
+              <Label htmlFor="severity">Tingkat Keparahan (Opsional)</Label>
               <Select
                 value={form.watch('severity') || 'LOW'}
                 onValueChange={(value) => form.setValue('severity', value as Severity)}
@@ -316,6 +422,9 @@ function AddQualityCheckDialog({
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Seberapa serius masalah ini?
+              </p>
             </div>
           </div>
 
@@ -391,7 +500,16 @@ function AddQualityCheckDialog({
 
 export function QualityControl({ productionId, className }: QualityControlProps) {
   const [showAddDialog, setShowAddDialog] = useState(false)
-  const { data: checks = [], isLoading } = useQualityChecks(productionId)
+  const { data: checks = [], isLoading, isFetching, dataUpdatedAt } = useQualityChecks(productionId)
+
+  // Debug logging
+  console.log('[QualityControl] Render:', {
+    productionId,
+    checksCount: checks.length,
+    isLoading,
+    isFetching,
+    dataUpdatedAt: new Date(dataUpdatedAt).toISOString(),
+  })
 
   const overallScore = calculateOverallScore(checks)
   const passedChecks = checks.filter((c) => c.passed).length
@@ -400,14 +518,17 @@ export function QualityControl({ productionId, className }: QualityControlProps)
 
   return (
     <>
-      <Card className={cn('', className)}>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Quality Control</CardTitle>
+      <Card className={cn('w-full', className)}>
+        <CardHeader className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="space-y-1">
+              <CardTitle className="text-xl flex items-center gap-2">
+                <Shield className="h-5 w-5 text-primary" />
+                Quality Control
+              </CardTitle>
               <CardDescription>Pemeriksaan kualitas produksi makanan</CardDescription>
             </div>
-            <Button onClick={() => setShowAddDialog(true)} size="sm">
+            <Button onClick={() => setShowAddDialog(true)} size="sm" className="w-full sm:w-auto">
               <Plus className="h-4 w-4 mr-2" />
               Tambah Check
             </Button>
@@ -416,33 +537,43 @@ export function QualityControl({ productionId, className }: QualityControlProps)
         <CardContent className="space-y-6">
           {/* Overall Statistics */}
           {checks.length > 0 && (
-            <>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="p-4 border rounded-lg bg-muted/50">
-                  <p className="text-xs text-muted-foreground mb-1">Skor Keseluruhan</p>
-                  <p className="text-2xl font-bold">{overallScore}</p>
-                  <p className="text-xs text-muted-foreground mt-1">dari 100</p>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="p-4 border rounded-lg bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-900/20 dark:to-blue-900/10 border-blue-200 dark:border-blue-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-blue-700 dark:text-blue-300">Skor Keseluruhan</p>
+                    <Award className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <p className="text-3xl font-bold text-blue-900 dark:text-blue-100">{overallScore}</p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">dari 100</p>
                 </div>
-                <div className="p-4 border rounded-lg bg-muted/50">
-                  <p className="text-xs text-muted-foreground mb-1">Total Pemeriksaan</p>
-                  <p className="text-2xl font-bold">{totalChecks}</p>
+                <div className="p-4 border rounded-lg bg-gradient-to-br from-slate-50 to-slate-100/50 dark:from-slate-800/20 dark:to-slate-900/10">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-muted-foreground">Total Pemeriksaan</p>
+                    <Shield className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <p className="text-3xl font-bold">{totalChecks}</p>
                   <p className="text-xs text-muted-foreground mt-1">checks dilakukan</p>
                 </div>
-                <div className="p-4 border rounded-lg bg-green-50 dark:bg-green-900/20">
-                  <p className="text-xs text-muted-foreground mb-1">Lulus</p>
-                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                    {passedChecks}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">pemeriksaan</p>
+                <div className="p-4 border rounded-lg bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-900/20 dark:to-green-900/10 border-green-200 dark:border-green-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-green-700 dark:text-green-300">Lulus</p>
+                    <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                  </div>
+                  <p className="text-3xl font-bold text-green-900 dark:text-green-100">{passedChecks}</p>
+                  <p className="text-xs text-green-600 dark:text-green-400 mt-1">pemeriksaan</p>
                 </div>
-                <div className="p-4 border rounded-lg bg-red-50 dark:bg-red-900/20">
-                  <p className="text-xs text-muted-foreground mb-1">Tidak Lulus</p>
-                  <p className="text-2xl font-bold text-red-600 dark:text-red-400">{failedChecks}</p>
-                  <p className="text-xs text-muted-foreground mt-1">pemeriksaan</p>
+                <div className="p-4 border rounded-lg bg-gradient-to-br from-red-50 to-red-100/50 dark:from-red-900/20 dark:to-red-900/10 border-red-200 dark:border-red-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-red-700 dark:text-red-300">Tidak Lulus</p>
+                    <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                  </div>
+                  <p className="text-3xl font-bold text-red-900 dark:text-red-100">{failedChecks}</p>
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">pemeriksaan</p>
                 </div>
               </div>
               <Separator />
-            </>
+            </div>
           )}
 
           {/* Quality Checks Table */}
@@ -458,20 +589,46 @@ export function QualityControl({ productionId, className }: QualityControlProps)
               </Button>
             </div>
           ) : (
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tipe</TableHead>
-                    <TableHead>Parameter</TableHead>
-                    <TableHead>Nilai</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Skor</TableHead>
-                    <TableHead>Tingkat</TableHead>
-                    <TableHead>Waktu</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+            <div className="space-y-4 relative">
+              {/* Fetching Indicator */}
+              {isFetching && (
+                <div className="absolute top-0 right-0 z-10">
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-full text-xs text-blue-700 dark:text-blue-300">
+                    <div className="h-3 w-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    Memperbarui...
+                  </div>
+                </div>
+              )}
+              
+              {/* Info Header */}
+              <div className="flex items-start gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
+                    Informasi Quality Control
+                  </p>
+                  <p className="text-xs text-blue-700 dark:text-blue-300">
+                    Setiap pemeriksaan dicatat atas nama <strong>user yang sedang login</strong>. 
+                    Pastikan Quality Control dilakukan oleh <strong>Staff QC</strong> atau <strong>Manager Produksi</strong> yang memiliki wewenang untuk melakukan pemeriksaan kualitas.
+                  </p>
+                </div>
+              </div>
+
+              {/* Table Container with Horizontal Scroll */}
+              <div className="border rounded-lg overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[140px]">Tipe</TableHead>
+                      <TableHead className="min-w-[200px]">Parameter</TableHead>
+                      <TableHead className="min-w-[120px]">Nilai</TableHead>
+                      <TableHead className="min-w-[100px]">Status</TableHead>
+                      <TableHead className="min-w-[80px]">Skor</TableHead>
+                      <TableHead className="min-w-[120px]">Tingkat</TableHead>
+                      <TableHead className="min-w-[180px]">Waktu</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                   {checks.map((check) => {
                     const Icon = getCheckTypeIcon(check.checkType)
                     return (
@@ -528,16 +685,28 @@ export function QualityControl({ productionId, className }: QualityControlProps)
                           )}
                         </TableCell>
                         <TableCell>
-                          <p className="text-sm">{formatDateTime(check.checkTime)}</p>
-                          {check.checkedBy && (
-                            <p className="text-xs text-muted-foreground">{check.checkedBy}</p>
-                          )}
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium">{formatDateTime(check.checkTime)}</p>
+                            {check.user ? (
+                              <div className="flex flex-col gap-0.5">
+                                <p className="text-xs font-medium text-foreground">{check.user.name}</p>
+                                {check.user.userRole && (
+                                  <Badge variant="outline" className="w-fit text-xs px-1.5 py-0">
+                                    {getRoleLabel(check.user.userRole)}
+                                  </Badge>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">ID: {check.checkedBy}</p>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     )
                   })}
                 </TableBody>
               </Table>
+            </div>
             </div>
           )}
 

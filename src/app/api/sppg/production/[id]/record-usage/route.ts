@@ -76,10 +76,10 @@ export async function POST(
       }
 
 
-      // Check if production is completed
-      if (production.status !== 'COMPLETED') {
+      // Check if production is completed or in quality check
+      if (production.status !== 'COMPLETED' && production.status !== 'QUALITY_CHECK') {
         return NextResponse.json({ 
-          error: 'Can only record stock usage for completed productions',
+          error: 'Can only record stock usage for productions in quality check or completed status',
           details: { currentStatus: production.status }
         }, { status: 400 })
       }

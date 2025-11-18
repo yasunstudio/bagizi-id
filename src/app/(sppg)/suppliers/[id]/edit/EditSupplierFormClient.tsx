@@ -7,11 +7,11 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { SupplierForm } from '@/features/sppg/suppliers/components'
-import { useUpdateSupplier } from '@/features/sppg/suppliers/hooks'
+import { SupplierForm } from '@/features/sppg/procurement/suppliers/components'
+import { useUpdateSupplier } from '@/features/sppg/procurement/suppliers/hooks'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Building2 } from 'lucide-react'
-import type { Supplier, UpdateSupplierInput } from '@/features/sppg/suppliers/types'
+import type { Supplier, UpdateSupplierInput } from '@/features/sppg/procurement/suppliers/types'
 
 interface EditSupplierFormClientProps {
   supplier: Supplier

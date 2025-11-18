@@ -52,11 +52,11 @@ export interface ExecutionWithRelations extends FoodDistribution {
   }
   vehicle: Vehicle | null
   deliveries: (DistributionDelivery & {
-    schoolBeneficiary: {
+    school: { // ✅ UPDATED (Phase 3)
       id: string
       schoolName: string
-      address: string
-    }
+      schoolAddress: string
+    } | null
   })[]
 }
 

@@ -86,7 +86,7 @@ export function useProgram(
  * function FilteredPrograms() {
  *   const { data: programs } = useProgramsFiltered({
  *     status: 'ACTIVE',
- *     programType: 'SCHOOL_FEEDING'
+ *     programType: 'FREE_NUTRITIOUS_MEAL'
  *   })
  *   
  *   return <ProgramsList programs={programs} />

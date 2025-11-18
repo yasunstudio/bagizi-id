@@ -525,7 +525,6 @@ export function ProductionForm({
                     .map(user => (
                       <SelectItem key={user.id} value={user.id}>
                         {user.name}
-                        {user.jobTitle && ` (${user.jobTitle})`}
                       </SelectItem>
                     ))}
                 </SelectContent>
@@ -554,7 +553,6 @@ export function ProductionForm({
                     .map(user => (
                       <SelectItem key={user.id} value={user.id}>
                         {user.name}
-                        {user.jobTitle && ` (${user.jobTitle})`}
                       </SelectItem>
                     ))}
                 </SelectContent>
@@ -621,7 +619,6 @@ export function ProductionForm({
                     .map(user => (
                       <SelectItem key={user.id} value={user.id}>
                         {user.name}
-                        {user.jobTitle && ` (${user.jobTitle})`}
                       </SelectItem>
                     ))}
                 </SelectContent>

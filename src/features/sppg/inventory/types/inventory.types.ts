@@ -19,6 +19,7 @@ export interface InventoryItem {
   itemCode: string | null
   brand: string | null
   category: InventoryCategory
+  foodCategoryId: string | null
   unit: string
   currentStock: number
   minStock: number
@@ -48,6 +49,13 @@ export interface InventoryItem {
     supplierName: string
     supplierCode: string
   } | null
+  foodCategory?: {
+    id: string
+    categoryCode: string
+    categoryName: string
+    colorCode: string | null
+    iconName: string | null
+  } | null
 }
 
 /**
@@ -58,6 +66,7 @@ export interface CreateInventoryInput {
   itemCode?: string
   brand?: string
   category: InventoryCategory
+  foodCategoryId?: string
   unit: string
   currentStock?: number
   minStock: number

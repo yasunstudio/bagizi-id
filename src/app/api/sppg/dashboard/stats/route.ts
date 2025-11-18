@@ -69,26 +69,46 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Total Beneficiaries (Schools)
-    const totalSchools = await db.schoolBeneficiary.count({
+    // Total Beneficiary Organizations
+    const totalOrganizations = await db.beneficiaryOrganization.count({
       where: {
-        program: {
-          sppgId: sppgId!
-        }
+        sppgId: sppgId!
       }
     })
 
-    // New Schools This Week
-    const newSchoolsThisWeek = await db.schoolBeneficiary.count({
+    // New Organizations This Week
+    const newOrganizationsThisWeek = await db.beneficiaryOrganization.count({
       where: {
-        program: {
-          sppgId: sppgId!
-        },
+        sppgId: sppgId!,
         createdAt: {
           gte: oneWeekAgo
         }
       }
     })
+
+    // Get all organizations to count by type
+    const allOrganizations = await db.beneficiaryOrganization.findMany({
+      where: {
+        sppgId: sppgId!
+      },
+      select: {
+        type: true,
+        maleMembers: true,
+        femaleMembers: true
+      }
+    })
+
+    // Count by Organization Type
+    const organizationsByType = allOrganizations.reduce((acc, org) => {
+      acc[org.type] = (acc[org.type] || 0) + 1
+      return acc
+    }, {} as Record<string, number>)
+
+    // Calculate total members across all organizations
+    const totalMembers = allOrganizations.reduce(
+      (sum, org) => sum + (org.maleMembers || 0) + (org.femaleMembers || 0),
+      0
+    )
 
     // Total Beneficiaries Recipients (Sum of targetRecipients from programs)
     const programsWithRecipients = await db.nutritionProgram.findMany({
@@ -185,11 +205,12 @@ export async function GET(request: NextRequest) {
           : 0
       },
       totalBeneficiaries: {
-        current: totalBeneficiaries,
-        schools: totalSchools,
-        newSchools: newSchoolsThisWeek,
-        percentage: newSchoolsThisWeek > 0
-          ? Math.round((newSchoolsThisWeek / Math.max(totalSchools, 1)) * 100)
+        current: totalMembers, // Total members from all organizations
+        organizations: totalOrganizations,
+        newOrganizations: newOrganizationsThisWeek,
+        byType: organizationsByType,
+        percentage: newOrganizationsThisWeek > 0
+          ? Math.round((newOrganizationsThisWeek / Math.max(totalOrganizations, 1)) * 100)
           : 0
       },
       pendingDistributions: {

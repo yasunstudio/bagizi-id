@@ -325,12 +325,19 @@ export async function withAdminAuth(
   try {
     return await handler(accessCheck.session!)
   } catch (error) {
-    console.error('[API Middleware] Handler error:', error)
+    console.error('[API Middleware] Handler error:', {
+      error,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : 'N/A',
+      url: request.url,
+      method: request.method,
+    })
     return NextResponse.json(
       { 
         success: false, 
         error: 'Internal server error',
-        message: 'An error occurred while processing your request'
+        message: error instanceof Error ? error.message : 'An error occurred while processing your request',
+        details: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.stack : String(error)) : undefined
       },
       { status: 500 }
     )
@@ -488,12 +495,19 @@ export async function withSppgAuth(
   try {
     return await handler(accessCheck.session!)
   } catch (error) {
-    console.error('[API Middleware] Handler error:', error)
+    console.error('[API Middleware] Handler error:', {
+      error,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : 'N/A',
+      url: request.url,
+      method: request.method,
+    })
     return NextResponse.json(
       { 
         success: false, 
         error: 'Internal server error',
-        message: 'An error occurred while processing your request'
+        message: error instanceof Error ? error.message : 'An error occurred while processing your request',
+        details: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.stack : String(error)) : undefined
       },
       { status: 500 }
     )

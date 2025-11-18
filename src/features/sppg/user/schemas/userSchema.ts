@@ -88,17 +88,17 @@ export const createUserSchema = z.object({
     .trim()
     .optional(),
   
-  jobTitle: z
+  departmentId: z
     .string()
-    .max(150, 'Jabatan maksimal 150 karakter')
-    .trim()
-    .optional(),
+    .cuid('Department ID tidak valid')
+    .optional()
+    .nullable(),
   
-  department: z
+  positionId: z
     .string()
-    .max(100, 'Departemen maksimal 100 karakter')
-    .trim()
-    .optional(),
+    .cuid('Position ID tidak valid')
+    .optional()
+    .nullable(),
   
   // Optional settings
   timezone: z
@@ -144,17 +144,17 @@ export const updateUserSchema = z.object({
     .trim()
     .optional(),
   
-  jobTitle: z
+  departmentId: z
     .string()
-    .max(150, 'Jabatan maksimal 150 karakter')
-    .trim()
-    .optional(),
+    .cuid('Department ID tidak valid')
+    .optional()
+    .nullable(),
   
-  department: z
+  positionId: z
     .string()
-    .max(100, 'Departemen maksimal 100 karakter')
-    .trim()
-    .optional(),
+    .cuid('Position ID tidak valid')
+    .optional()
+    .nullable(),
   
   location: z
     .string()

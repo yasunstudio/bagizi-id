@@ -59,7 +59,6 @@ export async function GET(
             select: {
               id: true,
               name: true,
-              targetGroup: true
             }
           },
           nutritionCalc: true,

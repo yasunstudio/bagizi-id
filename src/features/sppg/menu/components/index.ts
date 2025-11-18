@@ -16,6 +16,13 @@ export { NutritionPreview } from './NutritionPreview'
 export { CostBreakdownCard } from './CostBreakdownCard'
 export { DuplicateMenuDialog } from './DuplicateMenuDialog'
 export { MenuActionsToolbar } from './MenuActionsToolbar'
+export { FoodCategorySelect, FoodCategoryBadge } from './FoodCategorySelect'
+
+// Recipe Steps Components (NEW)
+export { RecipeStepsManager } from './RecipeStepsManager'
+export { RecipeStepCard } from './RecipeStepCard'
+export { RecipeStepForm } from './RecipeStepForm'
+export { KitchenStepsDisplay } from './KitchenStepsDisplay'
 
 // Re-export as default for convenience
 export { MenuCard as default } from './MenuCard'

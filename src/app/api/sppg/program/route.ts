@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withSppgAuth } from '@/lib/api-middleware'
 import { db } from '@/lib/prisma'
 import { createProgramSchema } from '@/features/sppg/program/schemas'
+import { validateProgramConfiguration } from '@/lib/programValidation'
 import { UserRole, Prisma, ProgramStatus, ProgramType, TargetGroup } from '@prisma/client'
 
 /**
@@ -33,17 +34,35 @@ export async function GET(request: NextRequest) {
     try {
       // Parse query parameters for filtering
       const { searchParams } = new URL(request.url)
-      const status = searchParams.get('status') as ProgramStatus | null
-      const programType = searchParams.get('programType') as ProgramType | null
-      const targetGroup = searchParams.get('targetGroup') as TargetGroup | null
+      const statusParam = searchParams.get('status')
+      const programTypeParam = searchParams.get('programType')
+      const targetGroupParam = searchParams.get('targetGroup')
       const search = searchParams.get('search')
 
+      // ✅ Validate enum values with proper type checking
+      const status = statusParam && Object.values(ProgramStatus).includes(statusParam as ProgramStatus)
+        ? (statusParam as ProgramStatus)
+        : undefined
+
+      const programType = programTypeParam && Object.values(ProgramType).includes(programTypeParam as ProgramType)
+        ? (programTypeParam as ProgramType)
+        : undefined
+
+      const targetGroup = targetGroupParam && Object.values(TargetGroup).includes(targetGroupParam as TargetGroup)
+        ? (targetGroupParam as TargetGroup)
+        : undefined
+
       // Build where clause with multi-tenant filtering
+      // ✅ SIMPLIFIED (Nov 11, 2025): Filter by allowedTargetGroups array
       const where: Prisma.NutritionProgramWhereInput = {
         sppgId: session.user.sppgId!, // MANDATORY multi-tenant filter
         ...(status && { status }),
         ...(programType && { programType }),
-        ...(targetGroup && { targetGroup }),
+        ...(targetGroup && { 
+          allowedTargetGroups: {
+            has: targetGroup  // Check if array contains this target group
+          }
+        }),
         ...(search && {
           OR: [
             { name: { contains: search, mode: 'insensitive' as const } },
@@ -53,7 +72,7 @@ export async function GET(request: NextRequest) {
         }),
       }
 
-      // Fetch programs with ordering
+      // Fetch programs with ordering and menus (needed for production dropdown)
       const programs = await db.nutritionProgram.findMany({
         where,
         orderBy: [
@@ -66,6 +85,23 @@ export async function GET(request: NextRequest) {
               id: true,
               name: true,
               code: true,
+            },
+          },
+          menus: {
+            select: {
+              id: true,
+              menuName: true,
+              menuCode: true,
+              mealType: true,
+              servingSize: true,
+              batchSize: true,
+              costPerServing: true,
+              description: true,
+              preparationTime: true,
+              cookingTime: true,
+            },
+            orderBy: {
+              menuName: 'asc',
             },
           },
         },
@@ -129,6 +165,20 @@ export async function POST(request: NextRequest) {
           {
             error: 'Validation failed',
             details: validated.error.issues,
+          },
+          { status: 400 }
+        )
+      }
+
+      // ✅ SIMPLIFIED (Nov 11, 2025): Validate program configuration
+      const configValidation = validateProgramConfiguration({
+        allowedTargetGroups: validated.data.allowedTargetGroups,
+      })
+
+      if (!configValidation.valid) {
+        return NextResponse.json(
+          {
+            error: configValidation.error,
           },
           { status: 400 }
         )

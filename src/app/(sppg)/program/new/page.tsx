@@ -33,7 +33,7 @@ export default function NewProgramPage() {
   const { mutateAsync: createProgram, isPending } = useCreateProgram()
 
   /**
-   * Handle program creation
+   * ✅ SIMPLIFIED (Nov 11, 2025): Handle program creation
    * @param data - Validated program data from form
    */
   const handleSubmit = async (data: CreateProgramInput) => {
@@ -41,16 +41,12 @@ export default function NewProgramPage() {
       // Transform data to handle nullable fields - convert null to undefined
       const programData = {
         ...data,
-        description: data.description ?? undefined,
-        calorieTarget: data.calorieTarget ?? undefined,
-        proteinTarget: data.proteinTarget ?? undefined,
-        carbTarget: data.carbTarget ?? undefined,
-        fatTarget: data.fatTarget ?? undefined,
-        fiberTarget: data.fiberTarget ?? undefined,
-        endDate: data.endDate ?? undefined,
-        totalBudget: data.totalBudget ?? undefined,
-        budgetPerMeal: data.budgetPerMeal ?? undefined,
+        description: data.description || undefined,
+        endDate: data.endDate || undefined,
+        totalBudget: data.totalBudget || undefined,
+        budgetPerMeal: data.budgetPerMeal || undefined,
       }
+      
       const newProgram = await createProgram(programData)
       toast.success('Program berhasil dibuat')
       router.push(`/program/${newProgram.id}`)

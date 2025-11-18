@@ -1,19 +1,16 @@
 /**
- * @fileoverview Individual Procurement Plan API endpoints - GET, PUT, DELETE
+ * @fileoverview Individual Procurement Plan API endpoints - GET, PATCH, DELETE
  * @version Next.js 15.5.4 / Prisma 6.17.1 / Enterprise-grade
  * @author Bagizi-ID Development Team
  * @see {@link /docs/copilot-instructions.md} Enterprise Development Guidelines
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { withSppgAuth } from '@/lib/api-middleware'
+import { withSppgAuth, hasPermission } from '@/lib/api-middleware'
 import { db } from '@/lib/prisma'
-import { UserRole } from '@prisma/client'
-import { hasPermission } from '@/lib/permissions'
 import { 
-  procurementPlanUpdateSchema,
-  procurementPlanApprovalSchema
-} from '@/features/sppg/procurement/schemas'
+  procurementPlanUpdateSchema
+} from '@/features/sppg/procurement/plans/schemas'
 
 // ================================ GET /api/sppg/procurement/plans/[id] ================================
 
@@ -25,8 +22,8 @@ export async function GET(
     try {
       const { id } = await params
 
-      // Permission Check
-      if (!session.user.userRole || !hasPermission(session.user.userRole as UserRole, 'READ')) {
+      // Permission Check - User must have read permission
+      if (!hasPermission(session.user.userRole, 'user:read')) {
         return NextResponse.json({ 
           success: false, 
           error: 'Insufficient permissions' 
@@ -49,34 +46,79 @@ export async function GET(
           program: {
             select: {
               id: true,
-              name: true
+              name: true,
+              programCode: true
             }
           },
-        procurements: {
-          include: {
-            supplier: {
-              select: {
-                id: true,
-                supplierCode: true,
-                supplierName: true
+          // ✅ NEW: Include menu plan relation (for "From Menu" mode)
+          menuPlan: {
+            select: {
+              id: true,
+              name: true,
+              startDate: true,
+              endDate: true,
+              totalMenus: true,
+              totalEstimatedCost: true,
+              status: true,
+              program: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              }
+            }
+          },
+          procurements: {
+            include: {
+              supplier: {
+                select: {
+                  id: true,
+                  supplierCode: true,
+                  supplierName: true
+                }
+              },
+              items: {
+                select: {
+                  id: true,
+                  itemName: true,
+                  orderedQuantity: true,
+                  unit: true,
+                  finalPrice: true
+                }
               }
             },
-            items: {
-              select: {
-                id: true,
-                itemName: true,
-                orderedQuantity: true,
-                unit: true,
-                finalPrice: true
-              }
+            orderBy: {
+              procurementDate: 'desc'
             }
           },
-          orderBy: {
-            procurementDate: 'desc'
+          // ✅ NEW: Include productions relation (track usage)
+          productions: {
+            select: {
+              id: true,
+              productionCode: true,
+              productionDate: true,
+              status: true,
+              targetPortions: true
+            },
+            orderBy: {
+              productionDate: 'desc'
+            }
+          },
+          // ✅ NEW: Include distributions relation (track delivery)
+          distributions: {
+            select: {
+              id: true,
+              distributionCode: true,
+              distributionDate: true,
+              status: true,
+              totalRecipients: true
+            },
+            orderBy: {
+              distributionDate: 'desc'
+            }
           }
         }
-      }
-    })
+      })
 
     if (!plan) {
       return NextResponse.json({ 
@@ -119,9 +161,9 @@ export async function GET(
   })
 }
 
-// ================================ PUT /api/sppg/procurement/plans/[id] ================================
+// ================================ PATCH /api/sppg/procurement/plans/[id] ================================
 
-export async function PUT(
+export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -129,8 +171,8 @@ export async function PUT(
     try {
       const { id } = await params
       
-      // Permission Check
-      if (!session.user.userRole || !hasPermission(session.user.userRole as UserRole, 'PROCUREMENT_MANAGE')) {
+      // Permission Check - User must have procurement update permission
+      if (!hasPermission(session.user.userRole, 'procurement:update')) {
         return NextResponse.json({
           success: false,
           error: 'Insufficient permissions'
@@ -160,95 +202,97 @@ export async function PUT(
         }, { status: 403 })
       }
 
-      // Role Check - Only certain roles can edit
-      const allowedRoles = [
-      'SPPG_KEPALA',
-      'SPPG_ADMIN',
-      'SPPG_AKUNTAN',
-      'SPPG_PRODUKSI_MANAGER'
-    ]
-    
-    if (!session.user.userRole || !allowedRoles.includes(session.user.userRole)) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Insufficient permissions' 
-      }, { status: 403 })
-    }
+      // Parse and validate request body
+      const body = await request.json()
+      const validated = procurementPlanUpdateSchema.parse(body)
 
-    // 6. Parse and validate request body
-    const body = await request.json()
-    const validated = procurementPlanUpdateSchema.parse(body)
+      // Verify program belongs to SPPG if programId changed
+      if (validated.programId && validated.programId !== existingPlan.programId) {
+        const program = await db.nutritionProgram.findFirst({
+          where: {
+            id: validated.programId,
+            sppgId: session.user.sppgId! as string
+          }
+        })
 
-    // Verify program belongs to SPPG if programId changed
-    if (validated.programId && validated.programId !== existingPlan.programId) {
-      const program = await db.nutritionProgram.findFirst({
-        where: {
-          id: validated.programId,
-          sppgId: session.user.sppgId! as string
+        if (!program) {
+          return NextResponse.json({ 
+            success: false, 
+            error: 'Program not found or does not belong to your SPPG' 
+          }, { status: 404 })
+        }
+      }
+
+      // Calculate remaining budget if total budget changed
+      let remainingBudget = existingPlan.remainingBudget
+      if (validated.totalBudget !== undefined) {
+        remainingBudget = validated.totalBudget - existingPlan.usedBudget
+      }
+
+      // Update procurement plan
+      const updatedPlan = await db.procurementPlan.update({
+        where: { id },
+        data: {
+          ...validated,
+          remainingBudget,
+          // ✅ Handle submission workflow
+          ...(validated.approvalStatus === 'SUBMITTED' && {
+            submittedAt: new Date(),
+            submittedBy: session.user.id
+          }),
+          // ✅ Handle approval workflow
+          ...(validated.approvalStatus === 'APPROVED' && {
+            approvedAt: new Date(),
+            approvedBy: session.user.id
+          }),
+          // ✅ Handle rejection (clear approval data)
+          ...(validated.approvalStatus === 'REJECTED' && {
+            approvedAt: null,
+            approvedBy: null
+          })
+        },
+        include: {
+          sppg: {
+            select: {
+              id: true,
+              name: true
+            }
+          },
+          program: {
+            select: {
+              id: true,
+              name: true,
+              programCode: true
+            }
+          },
+          // ✅ Include menuPlan in update response
+          menuPlan: {
+            select: {
+              id: true,
+              name: true,
+              totalMenus: true,
+              totalEstimatedCost: true
+            }
+          },
+          procurements: {
+            select: {
+              id: true,
+              status: true,
+              totalAmount: true
+            }
+          }
         }
       })
 
-      if (!program) {
-        return NextResponse.json({ 
-          success: false, 
-          error: 'Program not found or does not belong to your SPPG' 
-        }, { status: 404 })
-      }
-    }
-
-    // 8. Calculate remaining budget if total budget changed
-    let remainingBudget = existingPlan.remainingBudget
-    if (validated.totalBudget !== undefined) {
-      remainingBudget = validated.totalBudget - existingPlan.usedBudget
-    }
-
-    // 9. Update procurement plan
-    const updatedPlan = await db.procurementPlan.update({
-      where: { id },
-      data: {
-        ...validated,
-        remainingBudget,
-        ...(validated.approvalStatus === 'SUBMITTED' && {
-          submittedAt: new Date(),
-          submittedBy: session.user.id
-        }),
-        ...(validated.approvalStatus === 'APPROVED' && {
-          approvedAt: new Date(),
-          approvedBy: session.user.id
-        })
-      },
-      include: {
-        sppg: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
-        program: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
-        procurements: {
-          select: {
-            id: true,
-            status: true,
-            totalAmount: true
-          }
-        }
-      }
-    })
-
-    // 10. Success response
-    return NextResponse.json({
-      success: true,
-      data: updatedPlan,
-      message: 'Procurement plan updated successfully'
-    })
+      // Success response
+      return NextResponse.json({
+        success: true,
+        data: updatedPlan,
+        message: 'Procurement plan updated successfully'
+      })
 
     } catch (error) {
-      console.error('PUT /api/sppg/procurement/plans/[id] error:', error)
+      console.error('PATCH /api/sppg/procurement/plans/[id] error:', error)
       
       // Validation error
       if (error instanceof Error && error.name === 'ZodError') {
@@ -279,8 +323,8 @@ export async function DELETE(
     try {
       const { id } = await params
       
-      // Permission Check
-      if (!session.user.userRole || !hasPermission(session.user.userRole as UserRole, 'PROCUREMENT_MANAGE')) {
+      // Permission Check - User must have procurement delete permission
+      if (!hasPermission(session.user.userRole, 'procurement:delete')) {
         return NextResponse.json({ 
           success: false,
           error: 'Insufficient permissions'
@@ -294,78 +338,12 @@ export async function DELETE(
           sppgId: session.user.sppgId!
         },
         include: {
-        procurements: {
-          select: {
-            id: true,
-            status: true
+          procurements: {
+            select: {
+              id: true,
+              status: true
+            }
           }
-        }
-      }
-    })
-
-    if (!plan) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Procurement plan not found or access denied' 
-      }, { status: 404 })
-    }
-
-    // 5. Check if plan can be deleted (no completed procurements)
-    const hasCompletedProcurements = plan.procurements.some(p => p.status === 'COMPLETED')
-    if (hasCompletedProcurements) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Cannot delete plan with completed procurements' 
-      }, { status: 403 })
-    }
-
-    // 6. Delete procurement plan (cascade will delete related procurements)
-    await db.procurementPlan.delete({
-      where: { id }
-    })
-
-    // 7. Success response
-    return NextResponse.json({
-      success: true,
-      message: 'Procurement plan deleted successfully'
-    })
-
-    } catch (error) {
-      console.error('DELETE /api/sppg/procurement/plans/[id] error:', error)
-      
-      // Internal server error
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Failed to delete procurement plan',
-        details: process.env.NODE_ENV === 'development' ? error : undefined
-      }, { status: 500 })
-    }
-  })
-}
-
-// ================================ PATCH /api/sppg/procurement/plans/[id] (Approval) ================================
-
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  return withSppgAuth(request, async (session) => {
-    try {
-      const { id } = await params
-      
-      // Permission Check - Approval requires APPROVE permission
-      if (!session.user.userRole || !hasPermission(session.user.userRole as UserRole, 'APPROVE')) {
-        return NextResponse.json({
-          success: false,
-          error: 'Insufficient permissions - Only Kepala SPPG can approve/reject procurement plans'
-        }, { status: 403 })
-      }
-
-      // Verify plan exists and belongs to SPPG
-      const plan = await db.procurementPlan.findFirst({
-        where: {
-          id,
-          sppgId: session.user.sppgId!
         }
       })
 
@@ -376,99 +354,47 @@ export async function PATCH(
         }, { status: 404 })
       }
 
-      // Check if plan is in correct status for approval
-      if (plan.approvalStatus !== 'SUBMITTED') {
+      // Check if plan can be deleted (only draft status)
+      if (plan.approvalStatus !== 'DRAFT') {
         return NextResponse.json({ 
           success: false, 
-          error: 'Only submitted plans can be approved/rejected' 
+          error: 'Only draft plans can be deleted. Approved or submitted plans must be cancelled instead.' 
         }, { status: 403 })
       }
 
-      // Parse and validate approval action
-    const body = await request.json()
-    const validated = procurementPlanApprovalSchema.parse(body)
+      // Check if there are any procurements linked to this plan
+      const hasActiveProcurements = plan.procurements.some(
+        p => p.status !== 'CANCELLED' && p.status !== 'DRAFT'
+      )
 
-    // 7. Update plan based on approval action
-    let newStatus: string
-    let rejectionReason: string | undefined
-
-    switch (validated.action) {
-      case 'APPROVE':
-        newStatus = 'APPROVED'
-        break
-      case 'REJECT':
-        newStatus = 'REJECTED'
-        rejectionReason = validated.rejectionReason
-        break
-      case 'REQUEST_REVISION':
-        newStatus = 'REVISION'
-        rejectionReason = validated.rejectionReason
-        break
-      default:
+      if (hasActiveProcurements) {
         return NextResponse.json({ 
           success: false, 
-          error: 'Invalid approval action' 
-        }, { status: 400 })
-    }
-
-    const updateData = {
-      approvedBy: session.user.id,
-      approvedAt: new Date(),
-      ...(rejectionReason && { rejectionReason })
-    }
-
-    const updatedPlan = await db.procurementPlan.update({
-      where: { id },
-      data: {
-        approvalStatus: newStatus,
-        ...updateData
-      },
-      include: {
-        sppg: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
-        program: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
-        procurements: {
-          select: {
-            id: true,
-            status: true,
-            totalAmount: true
-          }
-        }
+          error: 'Cannot delete plan with active procurements. Cancel procurements first.' 
+        }, { status: 403 })
       }
-    })
 
-    // 8. Success response
-    return NextResponse.json({
-      success: true,
-      data: updatedPlan,
-      message: `Procurement plan ${validated.action.toLowerCase()}d successfully`
-    })
+      // Soft delete the plan (set status to CANCELLED)
+      await db.procurementPlan.update({
+        where: { id },
+        data: {
+          approvalStatus: 'CANCELLED'
+        }
+      })
+
+      // Success response
+      return NextResponse.json({
+        success: true,
+        message: 'Procurement plan deleted successfully'
+      })
 
     } catch (error) {
-      console.error('PATCH /api/sppg/procurement/plans/[id] error:', error)
+      console.error('DELETE /api/sppg/procurement/plans/[id] error:', error)
       
-      // Validation error
-      if (error instanceof Error && error.name === 'ZodError') {
-        return NextResponse.json({ 
-          success: false, 
-          error: 'Validation failed',
-          details: error 
-        }, { status: 400 })
-      }
-
       // Internal server error
       return NextResponse.json({ 
         success: false, 
-        error: 'Failed to process approval',
+        error: 'Failed to delete procurement plan',
         details: process.env.NODE_ENV === 'development' ? error : undefined
       }, { status: 500 })
     }

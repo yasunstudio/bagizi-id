@@ -241,6 +241,14 @@ export function useAuth(): UseAuthReturn {
       case 'inventory':
         hasAccess = hasRole(['SPPG_KEPALA', 'SPPG_ADMIN', 'SPPG_AKUNTAN', 'SPPG_PRODUKSI_MANAGER'])
         break
+      case 'beneficiary':
+      case 'beneficiaries': // Support both singular and plural
+        hasAccess = hasRole(['SPPG_KEPALA', 'SPPG_ADMIN', 'SPPG_AHLI_GIZI'])
+        break
+      case 'budget':
+        // Budget tracking (Banper) - accessible by financial roles
+        hasAccess = hasRole(['SPPG_KEPALA', 'SPPG_ADMIN', 'SPPG_AKUNTAN'])
+        break
       case 'hrd':
         hasAccess = hasRole(['SPPG_KEPALA', 'SPPG_ADMIN', 'SPPG_HRD_MANAGER'])
         break
@@ -252,6 +260,9 @@ export function useAuth(): UseAuthReturn {
         break
       case 'settings':
         hasAccess = hasRole(['SPPG_KEPALA', 'SPPG_ADMIN'])
+        break
+      case 'notifications':
+        hasAccess = isSppgUser()
         break
       default:
         hasAccess = false

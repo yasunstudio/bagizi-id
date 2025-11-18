@@ -337,7 +337,7 @@ export type TrackLocationInput = z.infer<typeof trackLocationSchema>
 export const deliveryFiltersSchema = z.object({
   scheduleId: z.string().cuid().optional(),
   distributionId: z.string().cuid().optional(),
-  schoolBeneficiaryId: z.string().cuid().optional(),
+  schoolId: z.string().cuid().optional(), // ✅ UPDATED (Phase 3): Changed from schoolBeneficiaryId
   status: z
     .union([
       z.nativeEnum(DeliveryStatus),

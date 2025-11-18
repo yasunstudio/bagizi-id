@@ -33,6 +33,19 @@ export interface UserListItem {
     code: string
     name: string
   } | null
+  
+  // Department & Position relations
+  department: {
+    id: string
+    departmentName: string
+    departmentCode: string
+  } | null
+  
+  position: {
+    id: string
+    positionName: string
+    positionCode: string
+  } | null
 }
 
 /**
@@ -42,8 +55,8 @@ export interface UserDetail extends UserListItem {
   // Additional contact info
   firstName: string | null
   lastName: string | null
-  jobTitle: string | null
-  department: string | null
+  departmentId: string | null
+  positionId: string | null
   location: string | null
   timezone: 'WIB' | 'WITA' | 'WIT'
   language: 'id' | 'en'
@@ -87,8 +100,8 @@ export interface CreateUserInput {
   phone?: string
   firstName?: string
   lastName?: string
-  jobTitle?: string
-  department?: string
+  departmentId?: string | null
+  positionId?: string | null
   
   // Optional settings
   timezone?: 'WIB' | 'WITA' | 'WIT'
@@ -105,8 +118,8 @@ export interface UpdateUserInput {
   phone?: string
   firstName?: string
   lastName?: string
-  jobTitle?: string
-  department?: string
+  departmentId?: string | null
+  positionId?: string | null
   location?: string
   timezone?: 'WIB' | 'WITA' | 'WIT'
   language?: 'id' | 'en'

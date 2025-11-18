@@ -67,6 +67,7 @@ import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, Package, TrendingUp, Apple, Save, X, Info } from 'lucide-react'
 import { toast } from 'sonner'
+import { FoodCategorySelect } from '@/features/sppg/menu/components/FoodCategorySelect'
 
 /**
  * Props for InventoryForm component
@@ -99,18 +100,16 @@ export interface InventoryFormProps {
 }
 
 /**
- * Category labels for display
+ * Category labels for display (FIXED: Match actual Prisma enum)
  */
 const CATEGORY_LABELS: Record<string, string> = {
-  PROTEIN_HEWANI: 'Protein Hewani',
-  PROTEIN_NABATI: 'Protein Nabati',
+  PROTEIN: 'Protein',
   KARBOHIDRAT: 'Karbohidrat',
   SAYURAN: 'Sayuran',
   BUAH: 'Buah',
-  SUSU: 'Susu',
-  MINYAK_LEMAK: 'Minyak & Lemak',
-  GULA: 'Gula',
+  SUSU_OLAHAN: 'Susu & Olahan',
   BUMBU_REMPAH: 'Bumbu & Rempah',
+  MINYAK_LEMAK: 'Minyak & Lemak',
   LAINNYA: 'Lainnya',
 }
 
@@ -182,7 +181,8 @@ export function InventoryForm({
       itemName: '',
       itemCode: '',  // ✅ Empty string instead of undefined
       brand: '',     // ✅ Empty string instead of undefined
-      category: 'PROTEIN_HEWANI' as InventoryCategory,
+      category: 'PROTEIN' as InventoryCategory, // FIXED: Use actual enum value
+      foodCategoryId: undefined,  // ✅ Optional field
       unit: 'kg',
       currentStock: 0,
       minStock: 10,
@@ -210,9 +210,9 @@ export function InventoryForm({
   // Watch hasExpiry to conditionally show expiry fields
   const hasExpiry = form.watch('hasExpiry')
   
-  // Watch category to show nutrition info hint
+  // Watch category to show nutrition info hint (FIXED: Use actual enum values)
   const category = form.watch('category')
-  const shouldShowNutrition = ['PROTEIN_HEWANI', 'PROTEIN_NABATI', 'KARBOHIDRAT', 'SAYURAN', 'BUAH', 'SUSU'].includes(category)
+  const shouldShowNutrition = ['PROTEIN', 'KARBOHIDRAT', 'SAYURAN', 'BUAH', 'SUSU_OLAHAN'].includes(category)
   
   // Load existing item data into form (edit mode)
   useEffect(() => {
@@ -222,6 +222,7 @@ export function InventoryForm({
         itemCode: existingItem.itemCode || '',         // ✅ Empty string fallback
         brand: existingItem.brand || '',               // ✅ Empty string fallback
         category: existingItem.category,
+        foodCategoryId: existingItem.foodCategoryId || undefined,  // ✅ Optional field
         unit: existingItem.unit,
         currentStock: existingItem.currentStock,
         minStock: existingItem.minStock,
@@ -279,6 +280,9 @@ export function InventoryForm({
       
       // Supplier ID (optional)
       preferredSupplierId: data.preferredSupplierId ?? undefined,
+      
+      // Food Category ID (optional)
+      foodCategoryId: data.foodCategoryId ?? undefined,
     }
 
     if (isEditMode && itemId) {
@@ -435,6 +439,30 @@ export function InventoryForm({
                             ))}
                           </SelectContent>
                         </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Food Category (Master Data Classification) */}
+                  <FormField
+                    control={form.control as AnyFormControl}
+                    name="foodCategoryId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Klasifikasi Makanan</FormLabel>
+                        <FormControl>
+                          <FoodCategorySelect
+                            value={field.value || undefined}
+                            onValueChange={field.onChange}
+                            placeholder="Pilih klasifikasi (opsional)"
+                            allowClear
+                            className="w-full"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Klasifikasi detail berdasarkan master data kategori makanan
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}

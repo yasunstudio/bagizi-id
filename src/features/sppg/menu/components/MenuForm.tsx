@@ -47,10 +47,12 @@ import { useAllergenOptions } from '../hooks/useAllergens'
 import { usePrograms } from '../hooks/usePrograms'
 import { menuCreateSchema } from '../schemas'
 import type { Menu, MenuUpdateInput, MenuInput } from '../types'
-import type { MealType } from '@prisma/client'
+import type { MealType, TargetGroup } from '@prisma/client'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import { AddAllergenDialog } from './AddAllergenDialog'
+import { FoodCategorySelect } from './FoodCategorySelect'
+import { TARGET_GROUP_CONFIG } from '@/features/sppg/program/lib/targetGroupConfig'
 
 // ================================ FORM DATA INTERFACES ================================
 
@@ -154,6 +156,7 @@ export function MenuForm({
       description: menu.description || '',
       mealType: menu.mealType,
       servingSize: menu.servingSize,
+      foodCategoryId: menu.foodCategoryId || undefined,
       cookingTime: menu.cookingTime ?? undefined,
       preparationTime: menu.preparationTime ?? undefined,
       difficulty: (menu.difficulty as 'EASY' | 'MEDIUM' | 'HARD' | undefined) || undefined,
@@ -171,6 +174,7 @@ export function MenuForm({
       description: '',
       mealType: 'SNACK_PAGI',
       servingSize: 200,
+      foodCategoryId: undefined,
       cookingTime: undefined,
       preparationTime: undefined,
       difficulty: undefined,
@@ -441,6 +445,30 @@ export function MenuForm({
                   )}
                 />
               </div>
+
+              {/* Food Category */}
+              <FormField
+                control={form.control}
+                name="foodCategoryId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Kategori Makanan</FormLabel>
+                    <FormControl>
+                      <FoodCategorySelect
+                        value={field.value || undefined}
+                        onValueChange={field.onChange}
+                        placeholder="Pilih kategori makanan (opsional)"
+                        allowClear
+                        className="w-full"
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Pilih kategori untuk mengklasifikasikan menu berdasarkan jenis bahan atau kelompok makanan
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
             <Separator />
@@ -721,6 +749,345 @@ export function MenuForm({
                   )}
                 />
               </div>
+
+              {/* ✅ NEW (Nov 7, 2025): Target Group Compatibility */}
+              <Separator className="my-6" />
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">Target Group Compatibility</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Pilih target group yang compatible dengan menu ini. Kosongkan jika menu universal (untuk semua target).
+                  </p>
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="compatibleTargetGroups"
+                  render={() => (
+                    <FormItem>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {Object.entries(TARGET_GROUP_CONFIG).map(([key, config]) => (
+                          <FormField
+                            key={key}
+                            control={form.control}
+                            name="compatibleTargetGroups"
+                            render={({ field }) => (
+                              <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value?.includes(key as TargetGroup)}
+                                    onCheckedChange={(checked) => {
+                                      const currentValue = field.value || []
+                                      return checked
+                                        ? field.onChange([...currentValue, key])
+                                        : field.onChange(
+                                            currentValue.filter((value) => value !== key)
+                                          )
+                                    }}
+                                  />
+                                </FormControl>
+                                <FormLabel className="cursor-pointer font-normal flex-1">
+                                  {config.label}
+                                </FormLabel>
+                              </FormItem>
+                            )}
+                          />
+                        ))}
+                      </div>
+                      
+                      {/* Show selected badges */}
+                      {(form.watch('compatibleTargetGroups')?.length ?? 0) > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {form.watch('compatibleTargetGroups')?.map((group: TargetGroup) => (
+                            <Badge key={group} variant="secondary">
+                              {TARGET_GROUP_CONFIG[group].label}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {(form.watch('compatibleTargetGroups')?.length ?? 0) === 0 && (
+                        <Badge variant="outline" className="mt-3">
+                          🌍 Universal Menu (Semua Target Group)
+                        </Badge>
+                      )}
+                      
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* ✅ NEW (Nov 7, 2025): Special Nutrients (Conditional) */}
+              {form.watch('compatibleTargetGroups')?.some((group: TargetGroup) => 
+                ['PREGNANT_WOMAN', 'BREASTFEEDING_MOTHER', 'TEENAGE_GIRL', 'ELDERLY', 'TODDLER'].includes(group)
+              ) && (
+                <>
+                  <Separator className="my-6" />
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-lg font-semibold mb-2">Special Nutrients</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Nutrisi khusus yang diperlukan untuk target group yang dipilih
+                      </p>
+                    </div>
+
+                    {/* Conditional: Ibu Hamil - PREGNANT_WOMAN */}
+                    {form.watch('compatibleTargetGroups')?.includes('PREGNANT_WOMAN') && (
+                      <div className="space-y-4 p-4 border rounded-lg bg-pink-50 dark:bg-pink-950/20">
+                        <p className="text-sm font-medium text-pink-800 dark:text-pink-200 flex items-center gap-2">
+                          <Info className="h-4 w-4" />
+                          ⚠️ Menu untuk Ibu Hamil - Nutrisi Khusus Wajib Diisi
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="folicAcid"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Asam Folat (mcg)</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    placeholder="600"
+                                    {...field}
+                                    value={field.value ?? ''}
+                                    onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  Target: 600 mcg/hari
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="iron"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Zat Besi (mg)</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    placeholder="27"
+                                    {...field}
+                                    value={field.value ?? ''}
+                                    onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  Target: 27 mg/hari
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="calcium"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Kalsium (mg)</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    placeholder="1000"
+                                    {...field}
+                                    value={field.value ?? ''}
+                                    onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  Target: 1000 mg/hari
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Conditional: Remaja Putri - TEENAGE_GIRL */}
+                    {form.watch('compatibleTargetGroups')?.includes('TEENAGE_GIRL') && (
+                      <div className="space-y-4 p-4 border rounded-lg bg-purple-50 dark:bg-purple-950/20">
+                        <p className="text-sm font-medium text-purple-800 dark:text-purple-200 flex items-center gap-2">
+                          <Info className="h-4 w-4" />
+                          ⚠️ Menu untuk Remaja Putri - Zat Besi Wajib Minimal 15 mg
+                        </p>
+                        <FormField
+                          control={form.control}
+                          name="iron"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Zat Besi (mg)</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  placeholder="15"
+                                  {...field}
+                                  value={field.value ?? ''}
+                                  onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                Target minimal: 15 mg/hari (pencegahan anemia)
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    )}
+
+                    {/* Conditional: Lansia - ELDERLY */}
+                    {form.watch('compatibleTargetGroups')?.includes('ELDERLY') && (
+                      <div className="space-y-4 p-4 border rounded-lg bg-blue-50 dark:bg-blue-950/20">
+                        <p className="text-sm font-medium text-blue-800 dark:text-blue-200 flex items-center gap-2">
+                          <Info className="h-4 w-4" />
+                          ⚠️ Menu untuk Lansia - Kalsium & Vitamin D Wajib Diisi
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="calcium"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Kalsium (mg)</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    placeholder="1200"
+                                    {...field}
+                                    value={field.value ?? ''}
+                                    onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  Target: 1200 mg/hari
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="vitaminD"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Vitamin D (mcg)</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    placeholder="20"
+                                    {...field}
+                                    value={field.value ?? ''}
+                                    onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  Target: 20 mcg/hari
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Conditional: Balita - TODDLER */}
+                    {form.watch('compatibleTargetGroups')?.includes('TODDLER') && (
+                      <div className="space-y-4 p-4 border rounded-lg bg-green-50 dark:bg-green-950/20">
+                        <p className="text-sm font-medium text-green-800 dark:text-green-200 flex items-center gap-2">
+                          <Info className="h-4 w-4" />
+                          ⚠️ Menu untuk Balita - Vitamin A & D Wajib (Anti-Stunting)
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="vitaminA"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Vitamin A (mcg)</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    placeholder="400"
+                                    {...field}
+                                    value={field.value ?? ''}
+                                    onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  Target: 400-600 mcg/hari
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="vitaminD"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Vitamin D (mcg)</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    placeholder="15"
+                                    {...field}
+                                    value={field.value ?? ''}
+                                    onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  Target: 15 mcg/hari
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Conditional: Ibu Menyusui - BREASTFEEDING_MOTHER */}
+                    {form.watch('compatibleTargetGroups')?.includes('BREASTFEEDING_MOTHER') && (
+                      <div className="space-y-4 p-4 border rounded-lg bg-amber-50 dark:bg-amber-950/20">
+                        <p className="text-sm font-medium text-amber-800 dark:text-amber-200 flex items-center gap-2">
+                          <Info className="h-4 w-4" />
+                          ⚠️ Menu untuk Ibu Menyusui - Vitamin A untuk Produksi ASI
+                        </p>
+                        <FormField
+                          control={form.control}
+                          name="vitaminA"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Vitamin A (mcg)</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  placeholder="1300"
+                                  {...field}
+                                  value={field.value ?? ''}
+                                  onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                Target: 1300 mcg/hari (produksi ASI)
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
 
               {/* Menu Status */}
               <FormField

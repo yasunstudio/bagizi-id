@@ -1,0 +1,129 @@
+/**
+ * @fileoverview Employees List Page
+ * @module app/(sppg)/hrd/employees
+ * @description Enterprise employees list page with filtering and actions
+ * 
+ * ENTERPRISE FEATURES:
+ * - Server-side rendering with React 19
+ * - Real-time data with TanStack Query
+ * - Advanced filtering and search
+ * - Responsive layout with breadcrumbs
+ * - Action buttons (Create)
+ * - Multi-tenant security
+ * - Performance optimized
+ * 
+ * @version Next.js 15.5.4 / React 19.x
+ * @author Bagizi-ID Development Team
+ * @see {@link /docs/copilot-instructions.md} Page Architecture Guidelines
+ */
+
+'use client'
+
+import { Suspense } from 'react'
+
+import Link from 'next/link'
+import { Users, Plus } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardHeader,
+} from '@/components/ui/card'
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Separator } from '@/components/ui/separator'
+
+import { EmployeeList } from '@/features/sppg/hrd/components'
+
+
+/**
+ * Loading skeleton for employee list
+ */
+function EmployeeListSkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-4 w-96" />
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-4">
+          <Skeleton className="h-10 flex-1" />
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <Skeleton className="h-64 w-full" />
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * Employees List Page
+ * Route: /hrd/employees
+ */
+function EmployeesPage() {
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Page Header */}
+      <div className="flex flex-col gap-4">
+        {/* Breadcrumbs */}
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link href="/dashboard">Dashboard</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link href="/hrd">HRD</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>Karyawan</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+
+        {/* Page Title & Actions */}
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+              <Users className="h-8 w-8 text-primary" />
+              Manajemen Karyawan
+            </h1>
+            <p className="text-muted-foreground">
+              Kelola data karyawan, departemen, dan posisi
+            </p>
+          </div>
+
+          <Button asChild>
+            <Link href="/hrd/employees/new">
+              <Plus className="mr-2 h-4 w-4" />
+              Tambah Karyawan
+            </Link>
+          </Button>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Employee List */}
+      <Suspense fallback={<EmployeeListSkeleton />}>
+        <EmployeeList />
+      </Suspense>
+    </div>
+  )
+}
+
+export default EmployeesPage

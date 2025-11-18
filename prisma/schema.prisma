@@ -41,8 +41,8 @@ model User {
   riskScore                  Int                         @default(0)
   firstName                  String?                     @db.VarChar(100)
   lastName                   String?                     @db.VarChar(100)
-  jobTitle                   String?                     @db.VarChar(150)
-  department                 String?                     @db.VarChar(100)
+  departmentId               String?
+  positionId                 String?
   location                   String?                     @db.VarChar(255)
   timezone                   String                      @default("Asia/Jakarta") @db.VarChar(50)
   language                   String                      @default("id") @db.VarChar(10)
@@ -95,7 +95,12 @@ model User {
   onboarding                 UserOnboarding?
   userPermissions            UserPermission[]
   userSessions               UserSession[]
+  qualityControlsPerformed   QualityControl[]
+  paymentTransactionsCreated PaymentTransaction[]        @relation("PaymentTransactionCreator")
   sppg                       SPPG?                       @relation(fields: [sppgId], references: [id])
+  department                 Department?                 @relation("UserDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
+  position                   Position?                   @relation("UserPosition", fields: [positionId], references: [id], onDelete: SetNull)
+  monitoringReports          ProgramMonitoring[]         @relation("MonitoringReporter")
 
   @@index([email, isActive])
   @@index([userType, userRole, isActive])
@@ -107,6 +112,8 @@ model User {
   @@index([failedLoginAttempts, lockedUntil])
   @@index([emailVerified, isActive])
   @@index([securityLevel, riskScore])
+  @@index([departmentId])
+  @@index([positionId])
   @@map("users")
 }
 
@@ -160,6 +167,12 @@ model SPPG {
   customAllergens          Allergen[]                @relation("CustomAllergens")
   banperRequests           BanperRequest[]
   banperTransactions       BanperTransaction[]
+  
+  // ✅ NEW (Nov 12, 2025): Budget tracking relations
+  banperRequestTracking    BanperRequestTracking[]
+  programBudgetAllocations ProgramBudgetAllocation[]
+  budgetTransactions       BudgetTransaction[]
+  
   beneficiaryReceipts      BeneficiaryReceipt[]
   billingCycles            BillingCycle[]
   budgetTracking           BudgetTracking[]          @relation("SppgBudgetTracking")
@@ -214,8 +227,9 @@ model SPPG {
   positions                Position[]
   procurementPlans         ProcurementPlan[]
   procurements             Procurement[]
+  procurementSettings      ProcurementSettings?      @relation("ProcurementSettings")
   productionOptimizations  ProductionOptimization[]
-  schoolBeneficiaries      SchoolBeneficiary[] // ✅ NEW: Schools served by this SPPG
+  // ✅ REMOVED (Jan 19, 2025): schools, programEnrollments - Use BeneficiaryOrganization instead
   district                 District                  @relation("SppgDistrict", fields: [districtId], references: [id])
   province                 Province                  @relation("SppgProvince", fields: [provinceId], references: [id])
   regency                  Regency                   @relation("SppgRegency", fields: [regencyId], references: [id])
@@ -244,6 +258,10 @@ model SPPG {
   vehicles                 Vehicle[]
   wasteManagement          WasteManagement[]
   workSchedules            WorkSchedule[]
+
+  // NEW: Multi-Beneficiary Architecture Relations
+  beneficiaryOrganizations BeneficiaryOrganization[]
+  beneficiaryEnrollments   ProgramBeneficiaryEnrollment[]
 
   @@index([status, organizationType])
   @@index([provinceId, regencyId, status])
@@ -1053,7 +1071,8 @@ model InventoryItem {
   itemName            String
   itemCode            String?
   brand               String?
-  category            InventoryCategory
+  category            InventoryCategory // Keep enum for backward compatibility
+  foodCategoryId      String? // New: Optional relation to FoodCategory
   unit                String
   currentStock        Float                  @default(0)
   minStock            Float
@@ -1100,6 +1119,7 @@ model InventoryItem {
   isActive            Boolean                @default(true)
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
+  foodCategory        FoodCategory?          @relation(fields: [foodCategoryId], references: [id])
   preferredSupplier   Supplier?              @relation("SupplierItems", fields: [preferredSupplierId], references: [id])
   sppg                SPPG                   @relation(fields: [sppgId], references: [id], onDelete: Cascade)
   menuIngredients     MenuIngredient[]
@@ -1111,6 +1131,7 @@ model InventoryItem {
   @@index([sppgId, category])
   @@index([category, isActive])
   @@index([currentStock])
+  @@index([foodCategoryId]) // New index for FoodCategory relation
   @@map("inventory_items")
 }
 
@@ -1143,87 +1164,145 @@ model StockMovement {
   @@map("stock_movements")
 }
 
+// ============================================================================
+// MASTER DATA: Food Category
+// ============================================================================
+// Hierarchical food categorization system for menu planning and inventory
+// Replaces simple InventoryCategory enum with rich master data
+model FoodCategory {
+  id             String  @id @default(cuid())
+  categoryCode   String  @unique @db.VarChar(20)
+  categoryName   String  @db.VarChar(100)
+  categoryNameEn String? @db.VarChar(100)
+  description    String? @db.Text
+
+  // Hierarchical Structure
+  parentId String?
+  parent   FoodCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children FoodCategory[] @relation("CategoryHierarchy")
+
+  // Nutritional Characteristics
+  primaryNutrient String? @db.VarChar(50) // Protein, Karbohidrat, Vitamin, etc.
+  servingSizeGram Float? // Recommended serving size in grams
+  dailyServings   Int? // Recommended servings per day
+
+  // Categorization Metadata
+  colorCode String? @db.VarChar(7) // Hex color for UI display
+  iconName  String? @db.VarChar(50) // Icon identifier for UI
+  sortOrder Int     @default(0)
+
+  // System Fields
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  // Relations to existing models
+  inventoryItems InventoryItem[]
+  nutritionMenus NutritionMenu[]
+
+  @@index([parentId])
+  @@index([categoryCode])
+  @@index([isActive, sortOrder])
+  @@map("food_categories")
+}
+
 model ProcurementPlan {
-  id               String            @id @default(cuid())
-  sppgId           String
-  programId        String?
-  planName         String
-  planMonth        String
-  planYear         Int
-  planQuarter      Int?
-  totalBudget      Float
-  allocatedBudget  Float             @default(0)
-  usedBudget       Float             @default(0)
-  remainingBudget  Float             @default(0)
-  proteinBudget    Float?
-  carbBudget       Float?
-  vegetableBudget  Float?
-  fruitBudget      Float?
-  otherBudget      Float?
-  targetRecipients Int
-  targetMeals      Int
-  costPerMeal      Float?
-  approvalStatus   String            @default("DRAFT")
-  submittedBy      String?
-  submittedAt      DateTime?
-  approvedBy       String?
-  approvedAt       DateTime?
-  rejectionReason  String?
-  notes            String?
-  emergencyBuffer  Float?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  program          NutritionProgram? @relation(fields: [programId], references: [id])
-  sppg             SPPG              @relation(fields: [sppgId], references: [id], onDelete: Cascade)
-  procurements     Procurement[]
+  id                 String             @id @default(cuid())
+  sppgId             String
+  programId          String?
+  menuPlanId         String? // ✅ NEW: Link to menu plan for auto-generation
+  planName           String
+  planMonth          String
+  planYear           Int
+  planQuarter        Int?
+  totalBudget        Float
+  allocatedBudget    Float              @default(0)
+  usedBudget         Float              @default(0)
+  remainingBudget    Float              @default(0)
+  proteinBudget      Float?
+  carbBudget         Float?
+  vegetableBudget    Float?
+  fruitBudget        Float?
+  otherBudget        Float?
+  targetRecipients   Int
+  targetMeals        Int
+  costPerMeal        Float?
+  approvalStatus     String             @default("DRAFT")
+  submittedBy        String?
+  submittedAt        DateTime?
+  submissionNotes    String? // Catatan saat pengajuan
+  approvedBy         String?
+  approvedAt         DateTime?
+  approvalNotes      String? // Catatan saat approval
+  rejectionReason    String?
+  cancellationReason String? // Alasan pembatalan
+  notes              String?
+  emergencyBuffer    Float?
+  autoGeneratedItems Json? // ✅ NEW: Store suggested items from menu
+  menuBasedBudget    Float? // ✅ NEW: Budget calculated from menu
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  program            NutritionProgram?  @relation(fields: [programId], references: [id])
+  sppg               SPPG               @relation(fields: [sppgId], references: [id], onDelete: Cascade)
+  menuPlan           MenuPlan?          @relation("MenuPlanProcurements", fields: [menuPlanId], references: [id]) // ✅ NEW: Relation to MenuPlan
+  procurements       Procurement[]
+  productions        FoodProduction[]   @relation("ProcurementPlanProductions") // ✅ NEW: Track productions using this plan
+  distributions      FoodDistribution[] @relation("ProcurementPlanDistributions") // ✅ NEW: Track distributions using this plan
 
   @@index([sppgId, planMonth])
   @@index([approvalStatus])
+  @@index([menuPlanId]) // ✅ NEW: Index for menu plan queries
   @@map("procurement_plans")
 }
 
 model Procurement {
-  id               String            @id @default(cuid())
+  id               String    @id @default(cuid())
   sppgId           String
   planId           String?
-  procurementCode  String            @unique
-  procurementDate  DateTime          @default(now())
+  procurementCode  String    @unique
+  procurementDate  DateTime  @default(now())
   expectedDelivery DateTime?
   actualDelivery   DateTime?
-  supplierId       String            @db.VarChar(50)
-  supplierName     String?
-  supplierContact  String?
-  purchaseMethod   ProcurementMethod
-  paymentTerms     String?
-  subtotalAmount   Float
-  taxAmount        Float             @default(0)
-  discountAmount   Float             @default(0)
-  shippingCost     Float             @default(0)
-  totalAmount      Float
-  paidAmount       Float             @default(0)
-  paymentStatus    String            @default("UNPAID")
-  paymentDue       DateTime?
-  status           ProcurementStatus @default(DRAFT)
-  deliveryStatus   String            @default("ORDERED")
-  qualityGrade     QualityGrade?
-  qualityNotes     String?
-  receiptNumber    String?
-  receiptPhoto     String?
-  deliveryPhoto    String?
-  invoiceNumber    String?
-  deliveryMethod   String?
-  transportCost    Float?
-  packagingType    String?
-  inspectedBy      String?
-  inspectedAt      DateTime?
-  acceptanceStatus String?
-  rejectionReason  String?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  items            ProcurementItem[]
-  plan             ProcurementPlan?  @relation(fields: [planId], references: [id])
-  sppg             SPPG              @relation(fields: [sppgId], references: [id], onDelete: Cascade)
-  supplier         Supplier          @relation("SupplierProcurements", fields: [supplierId], references: [id])
+  supplierId       String    @db.VarChar(50)
+
+  // Historical Snapshot: Supplier data at time of procurement (denormalized for audit trail)
+  supplierName    String? // Snapshot of supplier.name at procurement time
+  supplierContact String? // Snapshot of supplier.phone at procurement time
+
+  purchaseMethod      ProcurementMethod
+  paymentTerms        String?
+  subtotalAmount      Float
+  taxAmount           Float                         @default(0)
+  discountAmount      Float                         @default(0)
+  shippingCost        Float                         @default(0)
+  totalAmount         Float
+  paidAmount          Float                         @default(0)
+  paymentStatus       String                        @default("UNPAID")
+  paymentDue          DateTime?
+  status              ProcurementStatus             @default(DRAFT)
+  deliveryStatus      String                        @default("ORDERED")
+  qualityGrade        QualityGrade?
+  qualityNotes        String?
+  receiptNumber       String?
+  receiptPhoto        String?
+  deliveryPhoto       String?
+  invoiceNumber       String?
+  deliveryMethod      String?
+  transportCost       Float?
+  packagingType       String?
+  inspectedBy         String?
+  inspectedAt         DateTime?
+  acceptanceStatus    String?
+  rejectionReason     String?
+  createdAt           DateTime                      @default(now())
+  updatedAt           DateTime                      @updatedAt
+  items               ProcurementItem[]
+  approvals           ProcurementApprovalTracking[] @relation("ProcurementApprovals")
+  qualityControls     ProcurementQualityControl[]   @relation("ProcurementQualityControls")
+  paymentTransactions PaymentTransaction[]          @relation("ProcurementPayments")
+  plan                ProcurementPlan?              @relation(fields: [planId], references: [id])
+  sppg                SPPG                          @relation(fields: [sppgId], references: [id], onDelete: Cascade)
+  supplier            Supplier                      @relation("SupplierProcurements", fields: [supplierId], references: [id])
 
   @@index([sppgId, procurementDate])
   @@index([paymentStatus, paymentDue])
@@ -1231,21 +1310,49 @@ model Procurement {
   @@map("procurements")
 }
 
+/// Payment transactions for tracking individual payments made against procurements
+model PaymentTransaction {
+  id              String                   @id @default(cuid())
+  procurementId   String
+  paymentDate     DateTime
+  paymentMethod   ProcurementPaymentMethod
+  amount          Float
+  referenceNumber String?                  @db.VarChar(100)
+  bankName        String?                  @db.VarChar(100)
+  accountNumber   String?                  @db.VarChar(50)
+  receiptUrl      String?                  @db.VarChar(500)
+  notes           String?                  @db.Text
+  createdBy       String
+  createdByName   String?                  @db.VarChar(255)
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  procurement Procurement @relation("ProcurementPayments", fields: [procurementId], references: [id], onDelete: Cascade)
+  creator     User        @relation("PaymentTransactionCreator", fields: [createdBy], references: [id])
+
+  @@index([procurementId, paymentDate])
+  @@index([createdBy])
+  @@map("payment_transactions")
+}
+
 model ProcurementItem {
-  id                 String            @id @default(cuid())
-  procurementId      String
-  inventoryItemId    String?
-  itemName           String
-  itemCode           String?
-  category           InventoryCategory
-  brand              String?
+  id              String  @id @default(cuid())
+  procurementId   String
+  inventoryItemId String?
+
+  // Historical Snapshot: Inventory item data at time of procurement (denormalized for audit trail)
+  itemName String // Snapshot of inventory item name at procurement time
+  itemCode String? // Snapshot of inventory item code at procurement time
+  category InventoryCategory // Snapshot of category at procurement time
+  brand    String? // Snapshot of brand at procurement time
+
   orderedQuantity    Float
   receivedQuantity   Float?
   unit               String
-  pricePerUnit       Float
+  pricePerUnit       Float // Snapshot of price at procurement time (may differ from current inventory price)
   totalPrice         Float
-  discountPercent    Float             @default(0)
-  discountAmount     Float             @default(0)
+  discountPercent    Float     @default(0)
+  discountAmount     Float     @default(0)
   finalPrice         Float
   qualityStandard    String?
   qualityReceived    String?
@@ -1255,20 +1362,373 @@ model ProcurementItem {
   batchNumber        String?
   productionDate     DateTime?
   storageRequirement String?
-  isAccepted         Boolean           @default(true)
+  isAccepted         Boolean   @default(true)
   rejectionReason    String?
-  returnedQuantity   Float             @default(0)
-  caloriesPer100g    Float?
-  proteinPer100g     Float?
-  fatPer100g         Float?
-  carbsPer100g       Float?
-  notes              String?
-  inventoryItem      InventoryItem?    @relation(fields: [inventoryItemId], references: [id])
-  procurement        Procurement       @relation(fields: [procurementId], references: [id], onDelete: Cascade)
+  returnedQuantity   Float     @default(0)
+
+  // Nutritional Information Snapshot (may differ from current inventory data)
+  caloriesPer100g Float?
+  proteinPer100g  Float?
+  fatPer100g      Float?
+  carbsPer100g    Float?
+
+  notes            String?
+  inventoryItem    InventoryItem?         @relation(fields: [inventoryItemId], references: [id])
+  procurement      Procurement            @relation(fields: [procurementId], references: [id], onDelete: Cascade)
+  productionUsages ProductionStockUsage[] // ✅ NEW: Track where this item was used in production
 
   @@index([procurementId])
   @@index([category])
   @@map("procurement_items")
+}
+
+// ================================ APPROVAL TRACKING MODELS ================================
+
+/// Tracks individual approval actions for parallel approval workflow
+/// Stores who approved, when, and approval status for each required role
+model ProcurementApprovalTracking {
+  id              String   @id @default(cuid())
+  procurementId   String
+  approvalLevelId String? // Reference to approval level requirement
+  approverUserId  String // User who performed approval
+  approverName    String // Name of approver (snapshot)
+  approverRole    String // Role of approver at time of approval
+  action          String // APPROVED, REJECTED, ESCALATED
+  comments        String?  @db.Text
+  approvedAt      DateTime @default(now())
+  ipAddress       String?
+  isEscalated     Boolean  @default(false)
+  escalatedFrom   String? // Original approver if escalated
+  escalatedReason String?  @db.Text
+  createdAt       DateTime @default(now())
+
+  procurement Procurement @relation("ProcurementApprovals", fields: [procurementId], references: [id], onDelete: Cascade)
+
+  @@index([procurementId, action])
+  @@index([approverUserId, approvedAt])
+  @@map("procurement_approval_tracking")
+}
+
+// ================================ QUALITY CONTROL MODELS ================================
+
+model ProcurementQualityControl {
+  id             String               @id @default(cuid())
+  procurementId  String
+  inspectedBy    String
+  inspectedAt    DateTime             @default(now())
+  overallGrade   QualityGrade
+  overallStatus  QualityCheckStatus   @default(PENDING)
+  overallNotes   String?
+  recommendation String?
+  isApproved     Boolean              @default(false)
+  approvedBy     String?
+  approvedAt     DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  procurement    Procurement          @relation("ProcurementQualityControls", fields: [procurementId], references: [id], onDelete: Cascade)
+  items          QualityControlItem[]
+
+  @@index([procurementId, inspectedAt])
+  @@index([overallStatus])
+  @@map("procurement_quality_controls")
+}
+
+model QualityControlItem {
+  id                String                    @id @default(cuid())
+  qualityControlId  String
+  procurementItemId String
+  itemName          String
+  inspectedQuantity Float
+  acceptedQuantity  Float
+  rejectedQuantity  Float
+  qualityGrade      QualityGrade
+  isAccepted        Boolean                   @default(true)
+  defectType        String?
+  defectDescription String?
+  rejectionReason   String?
+  correctionAction  String?
+  photosUrl         String?
+  notes             String?
+  createdAt         DateTime                  @default(now())
+  qualityControl    ProcurementQualityControl @relation(fields: [qualityControlId], references: [id], onDelete: Cascade)
+  checkPoints       QualityCheckPoint[]
+
+  @@index([qualityControlId])
+  @@index([procurementItemId])
+  @@map("quality_control_items")
+}
+
+model QualityCheckPoint {
+  id             String             @id @default(cuid())
+  qualityItemId  String
+  checkPointName String
+  checkPointType String // VISUAL, PHYSICAL, CHEMICAL, MICROBIOLOGICAL
+  expectedValue  String?
+  actualValue    String?
+  isPassed       Boolean            @default(true)
+  remarks        String?
+  severity       String? // LOW, MEDIUM, HIGH, CRITICAL
+  createdAt      DateTime           @default(now())
+  qualityItem    QualityControlItem @relation(fields: [qualityItemId], references: [id], onDelete: Cascade)
+
+  @@index([qualityItemId])
+  @@map("quality_check_points")
+}
+
+// ================================ PROCUREMENT SETTINGS MODELS ================================
+
+/// Main Procurement Settings for each SPPG
+/// Stores general procurement configuration and references to detailed settings
+model ProcurementSettings {
+  id     String @id @default(cuid())
+  sppgId String @unique
+
+  // General Settings
+  autoApproveThreshold Float   @default(5000000) // Auto-approve below this amount
+  requireQCPhotos      Boolean @default(true)
+  minQCPhotoCount      Int     @default(3)
+  defaultPaymentTerm   String  @default("NET_30")
+  enableWhatsappNotif  Boolean @default(false)
+  whatsappNumber       String? @db.VarChar(20)
+  enableEmailDigest    Boolean @default(true)
+  digestFrequency      String  @default("DAILY") // DAILY, WEEKLY, MONTHLY
+
+  // Budget Alert Settings
+  budgetAlertEnabled   Boolean @default(true)
+  budgetAlertThreshold Float   @default(80) // Alert at 80% budget usage
+
+  // Approval Workflow Settings (Phase 4.1)
+  requireParallelApproval Boolean @default(false) // Require multiple approvers
+  approvalEscalationDays  Int     @default(3) // Auto-escalate after X days
+
+  // Notification Settings (Phase 4.3 & 4.4)
+  approvalNotificationWhatsapp String? @db.VarChar(20)
+  approvalNotificationEmail    String? @db.VarChar(255)
+
+  // Accounting Integration Settings (Phase 4.5)
+  accountingSystemApiUrl String? @db.VarChar(500)
+  accountingSystemApiKey String? @db.VarChar(255)
+
+  // Integration Settings
+  accountingIntegration Boolean @default(false)
+  inventoryAutoSync     Boolean @default(true)
+  apiKeyHash            String? @db.VarChar(255)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  sppg              SPPG                          @relation("ProcurementSettings", fields: [sppgId], references: [id], onDelete: Cascade)
+  approvalLevels    ProcurementApprovalLevel[]
+  customCategories  ProcurementCategory[]
+  notificationRules ProcurementNotificationRule[]
+  paymentTerms      ProcurementPaymentTerm[]
+  qcChecklists      ProcurementQCChecklist[]
+
+  @@index([sppgId])
+  @@map("procurement_settings")
+}
+
+/// Multi-level approval workflow configuration
+/// Defines approval requirements based on procurement value thresholds
+model ProcurementApprovalLevel {
+  id              String  @id @default(cuid())
+  settingsId      String
+  level           Int // 1, 2, 3, etc. (1 = first level)
+  levelName       String  @db.VarChar(100) // "Manager Approval", "Director Approval"
+  minAmount       Float // Minimum threshold (inclusive)
+  maxAmount       Float? // Maximum threshold (null = unlimited)
+  requiredRole    String  @db.VarChar(50) // SPPG_ADMIN, SPPG_KEPALA, etc.
+  isParallel      Boolean @default(false) // Parallel or sequential approval
+  escalationDays  Int? // Auto-escalate after N days of no action
+  skipOnEmergency Boolean @default(false) // Can be skipped for emergency procurement
+  isActive        Boolean @default(true)
+  sortOrder       Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  settings ProcurementSettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+
+  @@unique([settingsId, level])
+  @@index([settingsId, isActive])
+  @@index([minAmount, maxAmount])
+  @@map("procurement_approval_levels")
+}
+
+/// Custom procurement categories with budget allocation
+/// Allows SPPG to customize categories beyond default InventoryCategory enum
+model ProcurementCategory {
+  id          String  @id @default(cuid())
+  settingsId  String
+  code        String  @db.VarChar(50) // CUSTOM_PROTEIN_FROZEN, CUSTOM_SPICES
+  name        String  @db.VarChar(150)
+  description String? @db.VarChar(500)
+  icon        String? @db.VarChar(50) // Lucide icon name
+  color       String? @db.VarChar(20) // Hex color
+
+  // Budget Settings
+  monthlyBudget  Float?
+  yearlyBudget   Float?
+  budgetAllocPct Float? // Percentage of total procurement budget
+
+  // Approval Settings
+  requiresApproval  Boolean @default(true)
+  minApprovalAmount Float? // Minimum amount requiring approval
+  customApprover    String? @db.VarChar(50) // Override default approver role
+
+  // Display Settings
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  settings ProcurementSettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+
+  @@unique([settingsId, code])
+  @@index([settingsId, isActive])
+  @@index([sortOrder])
+  @@map("procurement_categories")
+}
+
+/// Notification rules for procurement events
+/// Configures who gets notified for specific procurement events
+model ProcurementNotificationRule {
+  id          String  @id @default(cuid())
+  settingsId  String
+  eventType   String  @db.VarChar(100) // ORDER_SUBMITTED, PAYMENT_OVERDUE, LOW_STOCK
+  eventName   String  @db.VarChar(150)
+  description String? @db.VarChar(500)
+
+  // Notification Channels
+  channel         String   @db.VarChar(50) // EMAIL, WHATSAPP, PUSH, SMS
+  recipientRoles  String[] // [SPPG_KEPALA, SPPG_AKUNTAN]
+  recipientEmails String[] // Specific email addresses
+  recipientPhones String[] // Specific phone numbers
+
+  // Template & Timing
+  template       String? @db.Text // Notification template
+  delayMinutes   Int     @default(0) // Delay before sending
+  retryOnFailure Boolean @default(true)
+  maxRetries     Int     @default(3)
+
+  // Conditions
+  conditionField    String? @db.VarChar(100) // "amount", "status", "overdueDays"
+  conditionOperator String? @db.VarChar(20) // ">", "<", "==", "contains"
+  conditionValue    String? @db.VarChar(255)
+
+  isEnabled Boolean @default(true)
+  priority  Int     @default(5) // 1-10 (10 = highest)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  settings ProcurementSettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+
+  @@unique([settingsId, eventType, channel])
+  @@index([settingsId, isEnabled])
+  @@index([eventType, isEnabled])
+  @@map("procurement_notification_rules")
+}
+
+/// Payment term configurations
+/// Defines available payment terms and their rules
+model ProcurementPaymentTerm {
+  id          String  @id @default(cuid())
+  settingsId  String
+  code        String  @db.VarChar(50) // NET_7, NET_30, NET_60, COD, TEMPO_14
+  name        String  @db.VarChar(100) // "Net 7 Days", "Cash on Delivery"
+  description String? @db.VarChar(500)
+
+  // Payment Rules
+  dueDays      Int // 0 for COD, 7/14/30/60 for net terms
+  requireDP    Boolean @default(false) // Requires down payment
+  dpPercentage Float?  @default(30) // Down payment percentage
+  dpDueDays    Int?    @default(7) // DP must be paid within N days
+
+  // Late Payment Rules
+  allowLatePayment Boolean @default(true)
+  lateFeeEnabled   Boolean @default(false)
+  lateFeePerDay    Float?  @default(0.5) // Percentage per day
+  maxLateFee       Float? // Maximum late fee amount
+
+  // Auto Actions
+  autoRemindDays   Int? @default(3) // Send reminder N days before due
+  autoEscalateDays Int? @default(7) // Escalate N days after due
+
+  isDefault Boolean @default(false)
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  settings ProcurementSettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+
+  @@unique([settingsId, code])
+  @@index([settingsId, isActive, isDefault])
+  @@index([sortOrder])
+  @@map("procurement_payment_terms")
+}
+
+/// Quality Control checklist templates
+/// Defines QC procedures for different item categories
+model ProcurementQCChecklist {
+  id          String  @id @default(cuid())
+  settingsId  String
+  code        String  @db.VarChar(50) // FRESH_PRODUCE_QC, FROZEN_GOODS_QC
+  name        String  @db.VarChar(150)
+  description String? @db.VarChar(500)
+  category    String? @db.VarChar(100) // "FRESH_PRODUCE", "PACKAGED_GOODS", "FROZEN"
+
+  // Check Items Structure
+  // Example: [
+  //   { item: "Visual Inspection", criteria: "No bruises", weight: 20, isMandatory: true },
+  //   { item: "Temperature Check", criteria: "4-8°C", weight: 30, isMandatory: true }
+  // ]
+  checkItems Json
+
+  // Scoring & Pass Rules
+  passThreshold    Float   @default(80) // Minimum score to pass (percentage)
+  requirePhotos    Boolean @default(true)
+  minPhotos        Int     @default(3)
+  maxPhotos        Int     @default(10)
+  requireSignature Boolean @default(true)
+
+  // Sampling Rules
+  samplingEnabled Boolean @default(false)
+  samplingPct     Float?  @default(10) // Sample 10% of items
+  minSampleSize   Int?    @default(5) // Minimum 5 items to sample
+
+  // Auto Actions
+  autoRejectBelow  Float? @default(60) // Auto-reject if score < 60
+  autoApproveAbove Float? @default(95) // Auto-approve if score > 95
+
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  settings ProcurementSettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+
+  @@unique([settingsId, code])
+  @@index([settingsId, isActive])
+  @@index([category, isActive])
+  @@map("procurement_qc_checklists")
+}
+
+// ================================ QUALITY CONTROL ENUMS ================================
+
+enum QualityCheckStatus {
+  PENDING
+  IN_PROGRESS
+  PASSED
+  FAILED
+  CONDITIONAL
+
+  @@map("quality_check_status")
 }
 
 model NutritionRequirement {
@@ -1317,153 +1777,20 @@ model NutritionRequirement {
   @@map("nutrition_requirements")
 }
 
-model SchoolBeneficiary {
-  id                 String       @id @default(cuid())
-  sppgId             String // ✅ CRITICAL FIX: Multi-tenancy isolation
-  programId          String
-  schoolName         String       @db.VarChar(255)
-  schoolCode         String?      @unique @db.VarChar(50) // ✅ Unique constraint
-  npsn               String?      @unique @db.VarChar(20) // ✅ Nomor Pokok Sekolah Nasional
-  schoolType         SchoolType // ✅ ENUM instead of String
-  schoolStatus       SchoolStatus // ✅ ENUM instead of String
-  accreditationGrade String?      @db.VarChar(1) // A, B, C
-  accreditationYear  Int?
-  principalName      String       @db.VarChar(255)
-  principalNip       String?      @db.VarChar(30) // Nomor Induk Pegawai
-  contactPhone       String       @db.VarChar(20)
-  contactEmail       String?      @db.VarChar(255)
-  alternatePhone     String?      @db.VarChar(20)
-  whatsappNumber     String?      @db.VarChar(20)
-
-  // ✅ Complete Regional Data for reporting
-  schoolAddress String
-  villageId     String
-  districtId    String // ✅ NEW: Kecamatan
-  regencyId     String // ✅ NEW: Kabupaten/Kota
-  provinceId    String // ✅ NEW: Provinsi
-  postalCode    String? @db.VarChar(10)
-  coordinates   String? @db.VarChar(50)
-  urbanRural    String? @default("URBAN") @db.VarChar(20) // URBAN/RURAL
-
-  // Student Demographics
-  totalStudents       Int
-  targetStudents      Int
-  activeStudents      Int  @default(0)
-  students4to6Years   Int  @default(0)
-  students7to12Years  Int  @default(0)
-  students13to15Years Int  @default(0)
-  students16to18Years Int  @default(0)
-  maleStudents        Int? @default(0) // ✅ NEW: Gender breakdown
-  femaleStudents      Int? @default(0) // ✅ NEW: Gender breakdown
-
-  // Feeding Configuration
-  feedingDays   Int[]
-  mealsPerDay   Int     @default(1)
-  feedingTime   String? @db.VarChar(50)
-  breakfastTime String? @db.VarChar(10) // HH:MM format
-  lunchTime     String? @db.VarChar(10)
-  snackTime     String? @db.VarChar(10)
-
-  // Delivery & Logistics
-  deliveryAddress       String
-  deliveryContact       String  @db.VarChar(255)
-  deliveryPhone         String? @db.VarChar(20)
-  deliveryInstructions  String?
-  preferredDeliveryTime String? @db.VarChar(50)
-  accessRoadCondition   String? @db.VarChar(50) // GOOD/FAIR/POOR
-  distanceFromSppg      Float? // ✅ NEW: Distance in KM
-  estimatedTravelTime   Int? // ✅ NEW: Minutes
-
-  // Facilities & Infrastructure
-  storageCapacity String?             @db.VarChar(100)
-  servingMethod   SchoolServingMethod @default(CAFETERIA) // ✅ ENUM
-  hasKitchen      Boolean             @default(false)
-  hasStorage      Boolean             @default(false)
-  hasRefrigerator Boolean             @default(false) // ✅ NEW
-  hasCleanWater   Boolean             @default(true)
-  hasElectricity  Boolean             @default(true)
-  hasHandwashing  Boolean             @default(true) // ✅ NEW
-  hasDiningArea   Boolean             @default(false) // ✅ NEW
-  diningCapacity  Int? // ✅ NEW: Number of students that can eat at once
-
-  // Budget & Financial
-  monthlyBudgetAllocation Float?    @default(0) // ✅ NEW: Budget per month
-  budgetPerStudent        Float?    @default(0) // ✅ NEW: Budget per student
-  contractStartDate       DateTime? // ✅ NEW: Contract tracking
-  contractEndDate         DateTime? // ✅ NEW
-  contractValue           Float? // ✅ NEW: Total contract value
-  contractNumber          String?   @db.VarChar(100) // ✅ NEW
-
-  // Performance Metrics
-  attendanceRate       Float?    @default(0) // ✅ NEW: % kehadiran
-  participationRate    Float?    @default(0) // ✅ NEW: % partisipasi makan
-  satisfactionScore    Float?    @default(0) // ✅ NEW: Skor kepuasan (0-5)
-  lastDistributionDate DateTime? // ✅ NEW: Tracking terakhir distribusi
-  lastReportDate       DateTime? // ✅ NEW: Tracking terakhir laporan
-  totalDistributions   Int       @default(0) // ✅ NEW: Total kali distribusi
-  totalMealsServed     Int       @default(0) // ✅ NEW: Total makanan disajikan
-
-  // Status & Enrollment
-  enrollmentDate   DateTime  @default(now())
-  isActive         Boolean   @default(true)
-  suspendedAt      DateTime?
-  suspensionReason String?
-  reactivationDate DateTime? // ✅ NEW: Tanggal reaktivasi
-
-  // Special Requirements
-  beneficiaryType BeneficiaryType @default(CHILD)
-  specialDietary  String[]
-  allergyAlerts   String[]
-  culturalReqs    String[]
-  religiousReqs   String[] // ✅ NEW: Kebutuhan keagamaan
-
-  // Integration & External Systems
-  dapodikId        String?   @unique @db.VarChar(50) // ✅ NEW: Dapodik ID
-  kemendikbudId    String?   @db.VarChar(50) // ✅ NEW: Kemendikbud ID
-  externalSystemId String?   @db.VarChar(100) // ✅ NEW: Other external system
-  syncedAt         DateTime? // ✅ NEW: Last sync with external system
-
-  // Notes & Documentation
-  notes               String? // ✅ NEW: Internal notes
-  specialInstructions String? // ✅ NEW: Special handling
-  documents           Json? // ✅ NEW: Document references
-
-  // Audit Trail
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  createdBy String?  @db.VarChar(100) // ✅ NEW: User who created
-  updatedBy String?  @db.VarChar(100) // ✅ NEW: User who updated
-
-  // Relations
-  foodDistributions FoodDistribution[]
-  sppg              SPPG                   @relation(fields: [sppgId], references: [id], onDelete: Cascade) // ✅ NEW: Direct SPPG relation
-  program           NutritionProgram       @relation(fields: [programId], references: [id], onDelete: Cascade)
-  province          Province               @relation("SchoolProvince", fields: [provinceId], references: [id]) // ✅ NEW
-  regency           Regency                @relation("SchoolRegency", fields: [regencyId], references: [id]) // ✅ NEW
-  district          District               @relation("SchoolDistrict", fields: [districtId], references: [id]) // ✅ NEW
-  village           Village                @relation("SchoolVillage", fields: [villageId], references: [id])
-  distributions     SchoolDistribution[]
-  reports           SchoolFeedingReport[]
-  deliveries        DistributionDelivery[]
-
-  @@unique([sppgId, schoolCode]) // ✅ NEW: Unique per SPPG
-  @@index([sppgId, isActive]) // ✅ CRITICAL: Multi-tenancy index
-  @@index([programId, isActive])
-  @@index([schoolType, isActive])
-  @@index([provinceId, regencyId, districtId]) // ✅ NEW: Regional reporting
-  @@index([villageId])
-  @@index([targetStudents])
-  @@index([npsn]) // ✅ NEW: NPSN lookup
-  @@index([enrollmentDate])
-  @@index([contractEndDate]) // ✅ NEW: Contract expiry monitoring
-  @@map("school_beneficiaries")
-}
+// ============================================================================
+// ✅ DEPRECATED MODELS REMOVED (January 19, 2025)
+// ============================================================================
+// School, ProgramSchoolEnrollment, SchoolDistribution, SchoolFeedingReport
+// All replaced by BeneficiaryOrganization and ProgramBeneficiaryEnrollment
+// See: /docs/SCHOOL_MODEL_CLEANUP_JAN2025.md
+// ============================================================================
 
 model FoodProduction {
   id                String                 @id @default(cuid())
   sppgId            String
   programId         String
   menuId            String
+  procurementPlanId String? // ✅ NEW: Link to procurement plan that funded this production
   productionDate    DateTime
   batchNumber       String                 @unique
   plannedPortions   Int
@@ -1488,6 +1815,13 @@ model FoodProduction {
   wasteNotes        String?
   notes             String?
   photos            String[]
+  // ✅ NEW: Production Cost Tracking
+  laborCost         Float?                 @default(0) // Biaya tenaga kerja produksi
+  utilityCost       Float?                 @default(0) // Biaya utilities (gas, listrik, air)
+  otherCosts        Float?                 @default(0) // Biaya lain-lain
+  ingredientCost    Float?                 @default(0) // Total biaya bahan baku (calculated from usageRecords)
+  totalCost         Float?                 @default(0) // Total semua biaya produksi
+  costPerMeal       Float?                 @default(0) // Biaya per porsi (totalCost / actualPortions)
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
   distributions     FoodDistribution[]
@@ -1496,12 +1830,14 @@ model FoodProduction {
   menu              NutritionMenu          @relation(fields: [menuId], references: [id], onDelete: Cascade)
   program           NutritionProgram       @relation(fields: [programId], references: [id], onDelete: Cascade)
   sppg              SPPG                   @relation(fields: [sppgId], references: [id], onDelete: Cascade)
+  procurementPlan   ProcurementPlan?       @relation("ProcurementPlanProductions", fields: [procurementPlanId], references: [id]) // ✅ NEW: Link to procurement plan
   menuAssignments   MenuAssignment[]
   qualityChecks     QualityControl[]
 
   @@index([sppgId, productionDate])
   @@index([programId, status])
   @@index([status, productionDate])
+  @@index([procurementPlanId]) // ✅ NEW: Index for procurement plan queries
   @@map("food_productions")
 }
 
@@ -1527,112 +1863,135 @@ model QualityControl {
   followUpDate     DateTime?
   createdAt        DateTime       @default(now())
   production       FoodProduction @relation(fields: [productionId], references: [id], onDelete: Cascade)
+  user             User           @relation(fields: [checkedBy], references: [id], onDelete: Restrict)
 
   @@index([productionId, checkType])
   @@index([checkType, passed])
+  @@index([checkedBy])
   @@map("quality_controls")
 }
 
 /// Production Stock Usage Tracking
 /// Tracks actual inventory items used during food production for accurate cost calculation
 model ProductionStockUsage {
-  id              String   @id @default(cuid())
-  productionId    String
-  inventoryItemId String
-  quantityUsed    Float // Actual quantity consumed during production
-  unit            String // Unit of measurement (kg, liter, gram, ml, etc.)
-  unitCostAtUse   Float // Cost per unit at the time of production (frozen snapshot)
-  totalCost       Float // quantityUsed * unitCostAtUse (calculated and stored for performance)
-  usedAt          DateTime @default(now()) // When the stock was consumed
-  recordedBy      String // User ID who recorded the usage
-  notes           String? // Optional notes about the usage (e.g., waste, substitutions)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                String   @id @default(cuid())
+  productionId      String
+  inventoryItemId   String
+  procurementItemId String? // ✅ NEW: Track which procurement this item came from
+  quantityUsed      Float // Actual quantity consumed during production
+  unit              String // Unit of measurement (kg, liter, gram, ml, etc.)
+  unitCostAtUse     Float // Cost per unit at the time of production (frozen snapshot)
+  totalCost         Float // quantityUsed * unitCostAtUse (calculated and stored for performance)
+  usedAt            DateTime @default(now()) // When the stock was consumed
+  recordedBy        String // User ID who recorded the usage
+  notes             String? // Optional notes about the usage (e.g., waste, substitutions)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   // Relations
-  production    FoodProduction @relation(fields: [productionId], references: [id], onDelete: Cascade)
-  inventoryItem InventoryItem  @relation(fields: [inventoryItemId], references: [id])
+  production      FoodProduction   @relation(fields: [productionId], references: [id], onDelete: Cascade)
+  inventoryItem   InventoryItem    @relation(fields: [inventoryItemId], references: [id])
+  procurementItem ProcurementItem? @relation(fields: [procurementItemId], references: [id]) // ✅ NEW: Link to procurement source
 
   // Indexes for performance
   @@index([productionId]) // Fast lookup by production
   @@index([inventoryItemId]) // Fast lookup by inventory item
   @@index([usedAt]) // Fast lookup by date for reporting
+  @@index([procurementItemId]) // ✅ NEW: Fast lookup by procurement source
   @@map("production_stock_usage")
 }
 
 model FoodDistribution {
-  id                        String                 @id @default(cuid())
-  sppgId                    String
-  programId                 String
-  productionId              String?
-  distributionDate          DateTime
-  distributionCode          String                 @unique
-  mealType                  MealType
-  distributionPoint         String
-  address                   String
-  coordinates               String?
-  plannedRecipients         Int
-  actualRecipients          Int?
-  plannedStartTime          DateTime
-  plannedEndTime            DateTime
-  distributorId             String
-  driverId                  String?
-  volunteers                String[]
-  distributionMethod        DistributionMethod?
-  vehicleType               String?
-  vehiclePlate              String?
-  transportCost             Float?
-  fuelCost                  Float?
-  otherCosts                Float?
-  menuItems                 Json
-  totalPortions             Int
-  portionSize               Float
-  departureTemp             Float?
-  arrivalTemp               Float?
-  servingTemp               Float?
-  status                    DistributionStatus     @default(SCHEDULED)
-  actualStartTime           DateTime?
-  actualEndTime             DateTime?
-  departureTime             DateTime?
-  arrivalTime               DateTime?
-  completionTime            DateTime?
-  foodQuality               QualityGrade?
-  hygieneScore              Int?
-  packagingCondition        String?
-  weatherCondition          String?
-  temperature               Float?
-  humidity                  Float?
-  notes                     String?
-  photos                    String[]
-  signature                 String?
-  createdAt                 DateTime               @default(now())
-  updatedAt                 DateTime               @updatedAt
-  schoolId                  String?
+  id                    String              @id @default(cuid())
+  sppgId                String
+  programId             String
+  productionId          String?
+  procurementPlanId     String? // ✅ NEW: Link to procurement plan for budget tracking
+  distributionDate      DateTime
+  distributionCode      String              @unique
+  mealType              MealType
+  distributionPoint     String
+  address               String
+  coordinates           String?
+  plannedRecipients     Int
+  actualRecipients      Int?
+  plannedStartTime      DateTime
+  plannedEndTime        DateTime
+  distributorId         String
+  driverId              String?
+  volunteers            String[]
+  distributionMethod    DistributionMethod?
+  vehicleType           String?
+  vehiclePlate          String?
+  transportCost         Float?              @default(0)
+  fuelCost              Float?              @default(0)
+  packagingCost         Float?              @default(0) // ✅ NEW: Biaya packaging makanan
+  laborCost             Float?              @default(0) // ✅ NEW: Biaya tenaga distribusi
+  otherCosts            Float?              @default(0)
+  totalProcurementCost  Float?              @default(0) // ✅ Cost of ingredients from procurement
+  totalProductionCost   Float?              @default(0) // ✅ Production overhead cost
+  totalDistributionCost Float?              @default(0) // ✅ Distribution costs (transport + fuel + packaging + labor + other)
+  totalCostPerMeal      Float?              @default(0) // ✅ Total cost divided by recipients
+  menuItems             Json
+  totalPortions         Int
+  portionSize           Float
+  departureTemp         Float?
+  arrivalTemp           Float?
+  servingTemp           Float?
+  status                DistributionStatus  @default(SCHEDULED)
+  actualStartTime       DateTime?
+  actualEndTime         DateTime?
+  departureTime         DateTime?
+  arrivalTime           DateTime?
+  completionTime        DateTime?
+  foodQuality           QualityGrade?
+  hygieneScore          Int?
+  packagingCondition    String?
+  weatherCondition      String?
+  temperature           Float?
+  humidity              Float?
+  notes                 String?
+  photos                String[]
+  signature             String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // ✅ PHASE 3: Multi-Beneficiary Support (schoolId/enrollmentId REMOVED Jan 19, 2025)
+  beneficiaryOrgId        String? // ✅ Link to BeneficiaryOrganization
+  beneficiaryEnrollmentId String? // ✅ Link to ProgramBeneficiaryEnrollment
+
   vehicleId                 String?
   completionNotes           String?
   issuesEncountered         String?
   resolutionNotes           String?
   scheduleId                String?
-  totalBeneficiariesReached Int?                   @default(0)
-  totalPortionsDelivered    Int?                   @default(0)
+  totalBeneficiariesReached Int?                  @default(0)
+  totalPortionsDelivered    Int?                  @default(0)
   issues                    DistributionIssue[]
   feedback                  Feedback[]
-  production                FoodProduction?        @relation(fields: [productionId], references: [id])
-  program                   NutritionProgram       @relation(fields: [programId], references: [id], onDelete: Cascade)
-  schedule                  DistributionSchedule?  @relation(fields: [scheduleId], references: [id])
-  school                    SchoolBeneficiary?     @relation(fields: [schoolId], references: [id])
-  sppg                      SPPG                   @relation(fields: [sppgId], references: [id], onDelete: Cascade)
-  vehicle                   Vehicle?               @relation("DistributionVehicle", fields: [vehicleId], references: [id])
-  vehicleAssignments        VehicleAssignment[]
-  deliveries                DistributionDelivery[] // ✅ PHASE 3: Individual delivery tracking
+  production                FoodProduction?       @relation(fields: [productionId], references: [id])
+  program                   NutritionProgram      @relation(fields: [programId], references: [id], onDelete: Cascade)
+  schedule                  DistributionSchedule? @relation(fields: [scheduleId], references: [id])
+
+  // ✅ PHASE 3: Multi-Beneficiary Relations
+  beneficiaryOrg        BeneficiaryOrganization?      @relation(fields: [beneficiaryOrgId], references: [id])
+  beneficiaryEnrollment ProgramBeneficiaryEnrollment? @relation(fields: [beneficiaryEnrollmentId], references: [id])
+
+  sppg               SPPG                   @relation(fields: [sppgId], references: [id], onDelete: Cascade)
+  procurementPlan    ProcurementPlan?       @relation("ProcurementPlanDistributions", fields: [procurementPlanId], references: [id]) // ✅ NEW: Link to procurement plan
+  vehicle            Vehicle?               @relation("DistributionVehicle", fields: [vehicleId], references: [id])
+  vehicleAssignments VehicleAssignment[]
+  deliveries         DistributionDelivery[] // ✅ PHASE 3: Individual delivery tracking
 
   @@index([sppgId, distributionDate])
   @@index([programId, status])
   @@index([status, distributionDate])
   @@index([distributionPoint])
-  @@index([schoolId, distributionDate])
+  @@index([beneficiaryOrgId, distributionDate]) // ✅ NEW (Phase 3): Index for new relation
+  @@index([beneficiaryEnrollmentId]) // ✅ NEW (Phase 3): Index for new relation
   @@index([vehicleId])
   @@index([scheduleId])
+  @@index([procurementPlanId]) // ✅ NEW: Index for procurement plan queries
   @@map("food_distributions")
 }
 
@@ -1958,6 +2317,7 @@ model Department {
   sppg             SPPG         @relation(fields: [sppgId], references: [id], onDelete: Cascade)
   employees        Employee[]
   positions        Position[]
+  users            User[]       @relation("UserDepartment")
 
   @@unique([sppgId, departmentCode])
   @@index([sppgId, isActive])
@@ -1987,6 +2347,7 @@ model Position {
   employees        Employee[]
   department       Department    @relation(fields: [departmentId], references: [id])
   sppg             SPPG          @relation(fields: [sppgId], references: [id], onDelete: Cascade)
+  users            User[]        @relation("UserPosition")
 
   @@unique([sppgId, positionCode])
   @@index([sppgId, departmentId])
@@ -2109,111 +2470,31 @@ model WorkSchedule {
   @@map("work_schedules")
 }
 
-model SchoolDistribution {
-  id                String                @id @default(cuid())
-  programId         String
-  schoolId          String
-  menuId            String
-  distributionDate  DateTime
-  targetQuantity    Int
-  actualQuantity    Int                   @default(0)
-  schoolName        String
-  targetStudents    Int
-  menuName          String
-  portionSize       Float
-  totalWeight       Float                 @default(0)
-  costPerPortion    Float                 @default(0)
-  totalCost         Float                 @default(0)
-  budgetAllocated   Float?
-  deliveryTime      DateTime?
-  deliveryAddress   String
-  deliveryContact   String
-  deliveryStatus    String                @default("PLANNED")
-  temperatureCheck  Boolean               @default(false)
-  foodTemperature   Float?
-  qualityStatus     String?
-  qualityNotes      String?
-  receivedBy        String?
-  receivedAt        DateTime?
-  signature         String?
-  photos            String[]
-  schoolFeedback    String?
-  satisfactionScore Int?
-  issues            String[]
-  needsFollowUp     Boolean               @default(false)
-  followUpNotes     String?
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
-  menu              NutritionMenu         @relation(fields: [menuId], references: [id])
-  program           NutritionProgram      @relation(fields: [programId], references: [id], onDelete: Cascade)
-  school            SchoolBeneficiary     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  reports           SchoolFeedingReport[]
-
-  @@index([programId, distributionDate])
-  @@index([schoolId, distributionDate])
-  @@index([deliveryStatus])
-  @@map("school_distributions")
-}
-
-model SchoolFeedingReport {
-  id                    String             @id @default(cuid())
-  distributionId        String
-  schoolId              String
-  reportDate            DateTime           @default(now())
-  reportType            String             @default("DAILY")
-  totalStudentsServed   Int
-  totalPortionsServed   Int
-  totalPortionsConsumed Int
-  wastePercentage       Float              @default(0)
-  attendanceRate        Float              @default(0)
-  participationRate     Float              @default(0)
-  foodTemperature       Float?
-  tasteRating           Float?
-  presentationRating    Float?
-  overallRating         Float?
-  studentFeedback       String[]
-  teacherFeedback       String[]
-  nutritionObservations String[]
-  issuesReported        String[]
-  actionsRequired       String[]
-  recommendationsNext   String[]
-  healthObservations    String?
-  energyLevels          String?
-  concentrationLevels   String?
-  reportedBy            String
-  reviewedBy            String?
-  reviewNotes           String?
-  reportStatus          String             @default("SUBMITTED")
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
-  distribution          SchoolDistribution @relation(fields: [distributionId], references: [id], onDelete: Cascade)
-  school                SchoolBeneficiary  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-
-  @@index([schoolId, reportDate])
-  @@index([distributionId])
-  @@index([reportType, reportDate])
-  @@map("school_feeding_reports")
-}
-
 model ProgramMonitoring {
-  id                    String           @id @default(cuid())
-  programId             String
-  monitoringMonth       String
-  monitoringYear        Int
-  reportingWeek         Int?
-  reportedBy            String
-  reportDate            DateTime         @default(now())
+  id        String @id @default(cuid())
+  programId String
+
+  // === TIME PERIOD (FIXED: DateTime instead of String+Int) ===
+  monitoringDate DateTime // Replaces monitoringMonth + monitoringYear
+  reportingWeek  Int?
+
+  // === REPORTER (FIXED: Relation to User instead of String) ===
+  reportedById String
+  reportedBy   User     @relation("MonitoringReporter", fields: [reportedById], references: [id])
+  reportDate   DateTime @default(now())
+
+  // === BENEFICIARY METRICS ===
   targetRecipients      Int
   enrolledRecipients    Int
   activeRecipients      Int
   dropoutCount          Int
   newEnrollments        Int
   attendanceRate        Float
-  assessmentsCompleted  Int              @default(0)
-  improvedNutrition     Int              @default(0)
-  stableNutrition       Int              @default(0)
-  worsenedNutrition     Int              @default(0)
-  criticalCases         Int              @default(0)
+  assessmentsCompleted  Int    @default(0)
+  improvedNutrition     Int    @default(0)
+  stableNutrition       Int    @default(0)
+  worsenedNutrition     Int    @default(0)
+  criticalCases         Int    @default(0)
   feedingDaysPlanned    Int
   feedingDaysCompleted  Int
   menuVariety           Int
@@ -2221,97 +2502,151 @@ model ProgramMonitoring {
   qualityIssues         Int
   totalMealsProduced    Int
   totalMealsDistributed Int
-  wastePercentage       Float
-  productionEfficiency  Float
-  budgetAllocated       Float
-  budgetUtilized        Float
-  budgetUtilization     Float
-  costPerRecipient      Float
-  costPerMeal           Float
-  savings               Float
-  avgQualityScore       Float
-  customerSatisfaction  Float
-  complaintCount        Int              @default(0)
-  complimentCount       Int              @default(0)
-  foodSafetyIncidents   Int              @default(0)
+  wastePercentage       Float?
+
+  // === BUDGET (Simplified - removed calculated fields) ===
+  budgetAllocated Float
+  budgetUtilized  Float
+  // Note: budgetUtilization = budgetUtilized / budgetAllocated * 100 (calculated)
+  // Note: costPerRecipient = budgetUtilized / activeRecipients (calculated)
+  // Note: costPerMeal = budgetUtilized / totalMealsDistributed (calculated)
+  // Note: savings = budgetAllocated - budgetUtilized (calculated)
+  // Note: productionEfficiency - should be calculated from production data
+
+  // === QUALITY & SATISFACTION ===
+  avgQualityScore       Float?
+  customerSatisfaction  Float?
+  complaintCount        Int    @default(0)
+  complimentCount       Int    @default(0)
+  foodSafetyIncidents   Int    @default(0)
   hygieneScore          Float?
   temperatureCompliance Float?
-  staffAttendance       Float
-  trainingCompleted     Int
-  majorChallenges       String[]
-  minorIssues           String[]
-  resourceConstraints   String[]
-  achievements          String[]
-  bestPractices         String[]
-  innovations           String[]
-  recommendedActions    String[]
-  priorityAreas         String[]
-  resourceNeeds         String[]
-  nextMonthTargets      String[]
-  improvementPlans      String[]
-  parentFeedback        String?
-  teacherFeedback       String?
-  communityFeedback     String?
-  governmentFeedback    String?
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
-  program               NutritionProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
 
-  @@index([programId, monitoringMonth])
-  @@index([monitoringMonth, monitoringYear])
+  // === HUMAN RESOURCES ===
+  staffAttendance   Float?
+  trainingCompleted Int    @default(0)
+
+  // === QUALITATIVE DATA (Simplified to JSON for flexibility) ===
+  challenges      Json? // majorChallenges, minorIssues, resourceConstraints
+  achievements    Json? // achievements, bestPractices, innovations  
+  recommendations Json? // recommendedActions, priorityAreas, resourceNeeds, nextMonthTargets, improvementPlans
+  feedback        Json? // parentFeedback, teacherFeedback, communityFeedback, governmentFeedback
+
+  // === METADATA ===
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // === RELATIONS ===
+  program NutritionProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@unique([programId, monitoringDate])
+  @@index([programId, monitoringDate])
+  @@index([monitoringDate])
   @@map("program_monitoring")
 }
 
 model NutritionProgram {
-  id                  String               @id @default(cuid())
-  sppgId              String
-  name                String
-  description         String?
-  programCode         String               @unique
-  programType         ProgramType
-  targetGroup         TargetGroup
-  calorieTarget       Float?
-  proteinTarget       Float?
-  carbTarget          Float?
-  fatTarget           Float?
-  fiberTarget         Float?
-  startDate           DateTime
-  endDate             DateTime?
-  feedingDays         Int[]
-  mealsPerDay         Int                  @default(1)
-  totalBudget         Float?
-  budgetPerMeal       Float?
-  targetRecipients    Int
-  currentRecipients   Int                  @default(0)
-  implementationArea  String
-  partnerSchools      String[]
-  status              ProgramStatus        @default(ACTIVE)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  feedback            Feedback[]
-  distributions       FoodDistribution[]
-  productions         FoodProduction[]
-  menuPlans           MenuPlan[]
-  menus               NutritionMenu[]
-  sppg                SPPG                 @relation(fields: [sppgId], references: [id], onDelete: Cascade)
-  procurementPlans    ProcurementPlan[]
-  monitoring          ProgramMonitoring[]
-  schools             SchoolBeneficiary[]
-  schoolDistributions SchoolDistribution[]
+  id          String      @id @default(cuid())
+  sppgId      String
+  name        String
+  description String?
+  programCode String      @unique
+  programType ProgramType
+
+  // ✅ SIMPLIFIED: Unified Multi-Target Architecture (Phase 2 - November 11, 2025)
+  // REASON: Simplified from dual-mode (single/multi) to array-only approach
+  // - Array with 1 item = "single-target" program
+  // - Array with 2+ items = "multi-target" program
+  // - Minimum 1 target required, maximum 6 targets (all available TargetGroup values)
+  // MIGRATION: isMultiTarget, targetGroup, primaryTargetGroup removed
+  allowedTargetGroups TargetGroup[]
+
+  // ❌ REMOVED (Phase 5 - Nov 8, 2025): Nutrition targets dropped from database
+  // REASON: NutritionStandard is the single source of truth for nutrition requirements
+  // Use getProgramNutritionTargets() or getProgramNutritionSummary() instead
+  // See: /src/lib/nutrition-helpers.ts
+
+  startDate          DateTime
+  endDate            DateTime?
+  feedingDays        Int[]
+  mealsPerDay        Int                 @default(1)
+  
+  // ✅ UPDATED (Nov 12, 2025): Budget fields now REQUIRED for government compliance
+  // REASON: All MBG programs are funded by government (APBN/APBD)
+  // Programs without budget allocation cannot be created
+  totalBudget        Float               // REQUIRED: Total program budget (sum of all allocations)
+  budgetPerMeal      Float               // REQUIRED: Budget per meal per beneficiary
+  
+  // ✅ NEW (Nov 12, 2025): Government budget tracking fields
+  budgetSource       BudgetSource        @default(APBN_PUSAT) // Primary funding source
+  budgetYear         Int                 // Fiscal year (e.g., 2025)
+  dpaNumber          String?             // Dokumen Pelaksanaan Anggaran number
+  dpaDate            DateTime?           // DPA approval date
+  apbnProgramCode    String?             // APBN program code (e.g., "024.01.2025.123")
+  
+  // ✅ NEW: Budget decree (SK Penetapan Anggaran)
+  budgetDecreeNumber String?             // Nomor SK penetapan anggaran
+  budgetDecreeDate   DateTime?           // Tanggal SK
+  budgetDecreeUrl    String?             // URL dokumen SK (PDF)
+  
+  // ✅ NEW: Budget breakdown (sesuai regulasi pemerintah)
+  foodBudget         Float?              // Anggaran bahan makanan (60-75%)
+  operationalBudget  Float?              // Anggaran operasional (15-20%)
+  transportBudget    Float?              // Anggaran transport (5-10%)
+  utilityBudget      Float?              // Anggaran utilitas (3-5%)
+  staffBudget        Float?              // Anggaran tenaga (5-7%)
+  otherBudget        Float?              // Anggaran lain-lain (2-3%)
+  
+  // ✅ NEW: Approval & audit trail
+  budgetApprovedBy   String?             // User ID yang menyetujui budget
+  budgetApprovedAt   DateTime?           // Waktu persetujuan
+  budgetApprovalNotes String?            // Catatan persetujuan
+  budgetLastModifiedBy String?           // User ID yang terakhir ubah budget
+  budgetLastModifiedAt DateTime?         // Waktu terakhir diubah
+  
+  targetRecipients   Int
+  currentRecipients  Int                 @default(0)
+  implementationArea String
+  // partnerSchools - REMOVED (Phase 4 - November 5, 2025)
+  // REASON: Replaced by programEnrollments relation (ProgramSchoolEnrollment)
+  // Data is now properly stored in junction table with full relational integrity
+  status             ProgramStatus       @default(ACTIVE)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  feedback           Feedback[]
+  distributions      FoodDistribution[]
+  productions        FoodProduction[]
+  menuPlans          MenuPlan[]
+  menus              NutritionMenu[]
+  sppg               SPPG                @relation(fields: [sppgId], references: [id], onDelete: Cascade)
+  procurementPlans   ProcurementPlan[]
+  monitoring         ProgramMonitoring[]
+  // ✅ REMOVED (Jan 19, 2025): schoolDistributions, programEnrollments - Use new architecture
+
+  // NEW: Multi-Beneficiary Architecture
+  beneficiaryEnrollments ProgramBeneficiaryEnrollment[] @relation("ProgramBeneficiaryEnrollments")
+  
+  // ✅ NEW (Nov 12, 2025): Budget allocation tracking
+  budgetAllocations  ProgramBudgetAllocation[]      @relation("ProgramBudgetAllocations")
+  
+  // ✅ NEW (Nov 12, 2025): BGN banper tracking (optional - for programs funded via banper)
+  banperTracking     BanperRequestTracking[]        @relation("ProgramBanperTracking")
 
   @@index([sppgId, status])
   @@index([programType, status])
   @@index([startDate, endDate])
+  @@index([budgetSource, budgetYear])
   @@map("nutrition_programs")
 }
 
 model NutritionMenu {
-  id                          String                    @id @default(cuid())
+  id                          String          @id @default(cuid())
   programId                   String
   menuName                    String
   menuCode                    String
   description                 String?
   mealType                    MealType
+  foodCategoryId              String? // New: Optional relation to FoodCategory
   servingSize                 Int
   costPerServing              Float
   cookingTime                 Int?
@@ -2319,28 +2654,49 @@ model NutritionMenu {
   batchSize                   Int?
   budgetAllocation            Float?
   allergens                   String[]
-  isHalal                     Boolean                   @default(true)
-  isVegetarian                Boolean                   @default(false)
-  nutritionStandardCompliance Boolean                   @default(false)
-  isActive                    Boolean                   @default(true)
-  createdAt                   DateTime                  @default(now())
-  updatedAt                   DateTime                  @updatedAt
+  isHalal                     Boolean         @default(true)
+  isVegetarian                Boolean         @default(false)
+  nutritionStandardCompliance Boolean         @default(false)
+  isActive                    Boolean         @default(true)
+  createdAt                   DateTime        @default(now())
+  updatedAt                   DateTime        @updatedAt
   difficulty                  MenuDifficulty?
   cookingMethod               CookingMethod?
-  isVegan                     Boolean                   @default(false)
-  feedback                    Feedback[]
-  productions                 FoodProduction[]
-  menuAssignments             MenuAssignment[]
-  costCalc                    MenuCostCalculation?
-  ingredients                 MenuIngredient[]
-  nutritionCalc               MenuNutritionCalculation?
-  program                     NutritionProgram          @relation(fields: [programId], references: [id], onDelete: Cascade)
-  recipeSteps                 RecipeStep[]
-  schoolDistributions         SchoolDistribution[]
+  isVegan                     Boolean         @default(false)
+
+  // ✅ NEW (Nov 7, 2025): Target Group Compatibility
+  // Empty array = universal menu (compatible with all target groups)
+  // Filled array = menu only compatible with specified target groups
+  compatibleTargetGroups TargetGroup[] @default([])
+
+  // ✅ NEW (Nov 7, 2025): Special Nutrients for Target-Specific Requirements
+  // These fields are optional but REQUIRED for certain target groups:
+  // - PREGNANT_WOMAN requires: folicAcid, iron, calcium
+  // - TEENAGE_GIRL requires: iron (minimum 15 mg)
+  // - ELDERLY requires: calcium, vitaminD
+  // - BREASTFEEDING_MOTHER requires: vitaminA
+  // - TODDLER requires: vitaminA, vitaminD (anti-stunting)
+  folicAcid       Float? // mcg - Critical for PREGNANT_WOMAN (600 mcg target)
+  iron            Float? // mg - Critical for PREGNANT_WOMAN (27 mg), TEENAGE_GIRL (15 mg)
+  calcium         Float? // mg - Critical for PREGNANT_WOMAN, ELDERLY (1000+ mg)
+  vitaminA        Float? // mcg - Important for BREASTFEEDING_MOTHER, TODDLER
+  vitaminC        Float? // mg - General immune support, aids iron absorption
+  vitaminD        Float? // mcg - Critical for ELDERLY, TODDLER (bone health)
+  feedback        Feedback[]
+  foodCategory    FoodCategory?             @relation(fields: [foodCategoryId], references: [id])
+  productions     FoodProduction[]
+  menuAssignments MenuAssignment[]
+  costCalc        MenuCostCalculation?
+  ingredients     MenuIngredient[]
+  nutritionCalc   MenuNutritionCalculation?
+  program         NutritionProgram          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  recipeSteps     RecipeStep[]
+  // ✅ REMOVED (Jan 19, 2025): schoolDistributions - Use FoodDistribution instead
 
   @@unique([programId, menuCode])
   @@index([programId, isActive])
   @@index([mealType, isActive])
+  @@index([foodCategoryId]) // New index for FoodCategory relation
   @@map("nutrition_menus")
 }
 
@@ -2437,6 +2793,7 @@ model MenuPlan {
   submittedBy             String?
   assignments             MenuAssignment[]
   templates               MenuPlanTemplate[]
+  procurementPlans        ProcurementPlan[]  @relation("MenuPlanProcurements") // ✅ NEW: Link to procurement plans generated from this menu
   approver                User?              @relation("MenuPlanApprover", fields: [approvedBy], references: [id])
   creator                 User               @relation("MenuPlanCreator", fields: [createdBy], references: [id])
   program                 NutritionProgram   @relation(fields: [programId], references: [id], onDelete: Cascade)
@@ -3000,6 +3357,185 @@ model BanperTransaction {
   @@map("banper_transactions")
 }
 
+// ✅ NEW MODEL (Nov 12, 2025): BGN Banper Request Tracking
+// PURPOSE: Track external BGN banper submissions (not approval system)
+// This is a TRACKING model - actual approval happens in BGN Portal
+model BanperRequestTracking {
+  id                    String   @id @default(cuid())
+  sppgId                String
+  
+  // Link to program(s) - One banper can fund multiple programs
+  programId             String?
+  
+  // BGN Portal reference (external system)
+  bgnRequestNumber      String?  @unique  // From BGN portal (e.g., "BANPER/BGN/2025/001")
+  bgnPortalUrl          String?            // Link to BGN portal submission
+  bgnSubmissionDate     DateTime?
+  
+  // Budget request details (internal calculation)
+  requestedAmount       Float
+  operationalPeriod     String             // "November - December 2024"
+  totalBeneficiaries    Int
+  beneficiaryBreakdown  Json?              // Breakdown by target group
+  
+  // Cost breakdown (for proposal)
+  foodCostTotal         Float
+  operationalCost       Float
+  transportCost         Float?
+  utilityCost           Float?
+  staffCost             Float?
+  otherCosts            Float?
+  dailyBudgetPerBeneficiary Float?
+  operationalDays       Int?   @default(12)
+  
+  // BGN Status tracking (mirror from portal - manual update!)
+  bgnStatus             BgnRequestStatus   @default(DRAFT_LOCAL)
+  lastStatusUpdate      DateTime?
+  lastCheckedAt         DateTime?          // When we last checked BGN portal
+  
+  // Disbursement info (from bank notification)
+  disbursedAmount       Float?
+  disbursedDate         DateTime?
+  bankReferenceNumber   String?
+  bankAccountReceived   String?            // Bank account (not virtual account!)
+  
+  // Documents (generated by Bagizi-ID for submission)
+  proposalDocumentUrl   String?            // PDF proposal
+  rabDocumentUrl        String?            // Excel RAB (budget breakdown)
+  supportingDocuments   String[]           @default([])
+  
+  // BGN Approval info (reference only - from BGN portal/email)
+  bgnApprovalNumber     String?            // SK number from BGN (e.g., "SK/BGN/2025/042")
+  bgnApprovalDate       DateTime?
+  bgnApprovedByName     String?            // BGN official name (not user ID!)
+  bgnApprovedByPosition String?            // BGN official position
+  bgnApprovalDocumentUrl String?           // PDF SK from BGN
+  
+  // Notes
+  internalNotes         String?            // SPPG staff notes
+  bgnReviewNotes        String?            // Notes from BGN (if provided)
+  bgnRejectionReason    String?            // Rejection reason from BGN
+  
+  // Metadata
+  createdBy             String             // SPPG user who created
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  
+  // Relations
+  sppg                  SPPG               @relation(fields: [sppgId], references: [id], onDelete: Cascade)
+  program               NutritionProgram?  @relation("ProgramBanperTracking", fields: [programId], references: [id], onDelete: SetNull)
+  budgetAllocations     ProgramBudgetAllocation[] @relation("BanperBudgetAllocations")
+  
+  @@index([sppgId, bgnStatus])
+  @@index([bgnRequestNumber])
+  @@index([programId])
+  @@index([bgnSubmissionDate])
+  @@map("banper_request_tracking")
+}
+
+// ✅ NEW MODEL (Nov 12, 2025): Program Budget Allocation Tracking
+// PURPOSE: Track budget allocations from various sources (APBN, APBD, Banper, etc.)
+// Allows one program to have multiple budget sources
+model ProgramBudgetAllocation {
+  id                  String         @id @default(cuid())
+  programId           String
+  sppgId              String
+  
+  // Budget source
+  source              BudgetSource   // APBN_PUSAT, APBD_PROVINSI, etc.
+  
+  // Link to Banper (if budget from banper request)
+  banperTrackingId    String?
+  
+  // Allocation details
+  allocatedAmount     Float          // Amount allocated from this source
+  allocatedDate       DateTime       // When allocated
+  allocatedBy         String         // User ID who allocated
+  fiscalYear          Int            // Fiscal year (e.g., 2025)
+  
+  // SK Penetapan (Budget decree)
+  decreeNumber        String?        // SK number
+  decreeDate          DateTime?      // SK date
+  decreeUrl           String?        // PDF URL
+  dpaNumber           String?        // DPA number (if applicable)
+  dpaDate             DateTime?      // DPA date
+  
+  // Budget tracking
+  spentAmount         Float          @default(0)  // Amount spent so far
+  remainingAmount     Float                       // Remaining budget
+  isFullySpent        Boolean        @default(false)
+  
+  // Status
+  status              BudgetAllocationStatus @default(ACTIVE)
+  
+  // Notes
+  notes               String?
+  
+  // Audit trail
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  lastSpentAt         DateTime?      // Last transaction date
+  
+  // Relations
+  program             NutritionProgram       @relation("ProgramBudgetAllocations", fields: [programId], references: [id], onDelete: Cascade)
+  sppg                SPPG                   @relation(fields: [sppgId], references: [id], onDelete: Cascade)
+  banperTracking      BanperRequestTracking? @relation("BanperBudgetAllocations", fields: [banperTrackingId], references: [id], onDelete: SetNull)
+  transactions        BudgetTransaction[]    @relation("AllocationTransactions")
+  
+  @@index([programId, status])
+  @@index([sppgId, fiscalYear])
+  @@index([source, fiscalYear])
+  @@index([banperTrackingId])
+  @@map("program_budget_allocations")
+}
+
+// ✅ NEW MODEL (Nov 12, 2025): Budget Transaction Log
+// PURPOSE: Track every budget transaction (spending) from allocations
+model BudgetTransaction {
+  id                  String                   @id @default(cuid())
+  allocationId        String
+  sppgId              String
+  programId           String
+  
+  // Transaction details
+  transactionNumber   String                   @unique
+  transactionDate     DateTime                 @default(now())
+  amount              Float                    // Transaction amount
+  category            BudgetTransactionCategory // PROCUREMENT, OPERATIONAL, TRANSPORT, etc.
+  
+  // Reference to other models (optional)
+  procurementId       String?                  // Link to Procurement
+  productionId        String?                  // Link to FoodProduction
+  distributionId      String?                  // Link to FoodDistribution
+  
+  // Description
+  description         String
+  notes               String?
+  
+  // Supporting documents
+  receiptNumber       String?
+  receiptUrl          String?
+  
+  // Approval (if required)
+  approvedBy          String?
+  approvedAt          DateTime?
+  
+  // Audit trail
+  createdBy           String                   // User who created transaction
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  
+  // Relations
+  allocation          ProgramBudgetAllocation  @relation("AllocationTransactions", fields: [allocationId], references: [id], onDelete: Cascade)
+  sppg                SPPG                     @relation(fields: [sppgId], references: [id], onDelete: Cascade)
+  
+  @@index([allocationId, transactionDate])
+  @@index([sppgId, category])
+  @@index([programId, transactionDate])
+  @@index([category, transactionDate])
+  @@map("budget_transactions")
+}
+
 model SppgTeamMember {
   id                 String    @id @default(cuid())
   sppgId             String
@@ -3073,10 +3609,10 @@ model DistributionSchedule {
 }
 
 model DistributionDelivery {
-  id                  String  @id @default(cuid())
-  scheduleId          String
-  distributionId      String? // ✅ PHASE 3: Link to FoodDistribution execution
-  schoolBeneficiaryId String? // ✅ PHASE 3: School beneficiary
+  id             String  @id @default(cuid())
+  scheduleId     String
+  distributionId String? // ✅ PHASE 3: Link to FoodDistribution execution
+  // ✅ REMOVED (Jan 19, 2025): schoolId - Use targetName/targetAddress instead
 
   // Legacy fields (for backward compatibility)
   targetType    String
@@ -3132,20 +3668,20 @@ model DistributionDelivery {
   foodTemperature    Decimal? @db.Decimal(5, 2) // Celsius
 
   // Relations
-  schedule          DistributionSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  distribution      FoodDistribution?    @relation(fields: [distributionId], references: [id]) // ✅ PHASE 3
-  schoolBeneficiary SchoolBeneficiary?   @relation(fields: [schoolBeneficiaryId], references: [id]) // ✅ PHASE 3
-  receipts          BeneficiaryReceipt[]
-  photos            DeliveryPhoto[] // ✅ PHASE 3
-  issues            DeliveryIssue[] // ✅ PHASE 3
-  trackingPoints    DeliveryTracking[] // ✅ PHASE 3
+  schedule       DistributionSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  distribution   FoodDistribution?    @relation(fields: [distributionId], references: [id]) // ✅ PHASE 3
+  // ✅ REMOVED (Jan 19, 2025): school relation - Use targetName/targetAddress instead
+  receipts       BeneficiaryReceipt[]
+  photos         DeliveryPhoto[] // ✅ PHASE 3
+  issues         DeliveryIssue[] // ✅ PHASE 3
+  trackingPoints DeliveryTracking[] // ✅ PHASE 3
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([scheduleId, status])
   @@index([distributionId, status])
-  @@index([schoolBeneficiaryId])
+  // ✅ REMOVED (Jan 19, 2025): @@index([schoolId])
   @@map("distribution_deliveries")
 }
 
@@ -4067,29 +4603,31 @@ model UserOnboarding {
 }
 
 model Province {
-  id                String              @id @default(cuid())
-  code              String              @unique @db.VarChar(2)
-  name              String              @db.VarChar(50)
-  region            IndonesiaRegion
-  timezone          Timezone
-  regencies         Regency[]
-  sppgs             SPPG[]              @relation("SppgProvince")
-  schoolBeneficiary SchoolBeneficiary[] @relation("SchoolProvince") // ✅ NEW
+  id                        String                     @id @default(cuid())
+  code                      String                     @unique @db.VarChar(2)
+  name                      String                     @db.VarChar(50)
+  region                    IndonesiaRegion
+  timezone                  Timezone
+  regencies                 Regency[]
+  sppgs                     SPPG[]                     @relation("SppgProvince")
+  beneficiaryOrganizations  BeneficiaryOrganization[]  // ✅ NEW: Organizations in this province
+  // ✅ REMOVED (Jan 19, 2025): schools - Use BeneficiaryOrganization instead
 
   @@index([region])
   @@map("provinces")
 }
 
 model Regency {
-  id                String              @id @default(cuid())
-  provinceId        String              @db.VarChar(50)
-  code              String              @db.VarChar(4)
-  name              String              @db.VarChar(100)
-  type              RegencyType
-  districts         District[]
-  province          Province            @relation(fields: [provinceId], references: [id], onDelete: Cascade)
-  sppgs             SPPG[]              @relation("SppgRegency")
-  schoolBeneficiary SchoolBeneficiary[] @relation("SchoolRegency") // ✅ NEW
+  id                        String                     @id @default(cuid())
+  provinceId                String                     @db.VarChar(50)
+  code                      String                     @db.VarChar(4)
+  name                      String                     @db.VarChar(100)
+  type                      RegencyType
+  districts                 District[]
+  province                  Province                   @relation(fields: [provinceId], references: [id], onDelete: Cascade)
+  sppgs                     SPPG[]                     @relation("SppgRegency")
+  beneficiaryOrganizations  BeneficiaryOrganization[]  // ✅ NEW: Organizations in this regency
+  // ✅ REMOVED (Jan 19, 2025): schools - Use BeneficiaryOrganization instead
 
   @@unique([provinceId, code])
   @@index([provinceId, type])
@@ -4097,14 +4635,15 @@ model Regency {
 }
 
 model District {
-  id                String              @id @default(cuid())
-  regencyId         String              @db.VarChar(50)
-  code              String              @db.VarChar(6)
-  name              String              @db.VarChar(100)
-  regency           Regency             @relation(fields: [regencyId], references: [id], onDelete: Cascade)
-  sppgs             SPPG[]              @relation("SppgDistrict")
-  villages          Village[]
-  schoolBeneficiary SchoolBeneficiary[] @relation("SchoolDistrict") // ✅ NEW
+  id        String    @id @default(cuid())
+  regencyId                 String                     @db.VarChar(50)
+  code                      String                     @db.VarChar(6)
+  name                      String                     @db.VarChar(100)
+  regency                   Regency                    @relation(fields: [regencyId], references: [id], onDelete: Cascade)
+  sppgs                     SPPG[]                     @relation("SppgDistrict")
+  villages                  Village[]
+  beneficiaryOrganizations  BeneficiaryOrganization[]  // ✅ NEW: Organizations in this district
+  // ✅ REMOVED (Jan 19, 2025): schools - Use BeneficiaryOrganization instead
 
   @@unique([regencyId, code])
   @@index([regencyId])
@@ -4112,16 +4651,17 @@ model District {
 }
 
 model Village {
-  id                String              @id @default(cuid())
-  districtId        String              @db.VarChar(50)
-  code              String              @db.VarChar(10)
-  name              String              @db.VarChar(100)
-  type              VillageType
-  postalCode        String?             @db.VarChar(5)
-  employees         Employee[]          @relation("EmployeeVillage")
-  schoolBeneficiary SchoolBeneficiary[] @relation("SchoolVillage")
-  sppgs             SPPG[]              @relation("SppgVillage")
-  district          District            @relation(fields: [districtId], references: [id], onDelete: Cascade)
+  id                        String                     @id @default(cuid())
+  districtId                String                     @db.VarChar(50)
+  code                      String                     @db.VarChar(10)
+  name                      String                     @db.VarChar(100)
+  type                      VillageType
+  postalCode                String?                    @db.VarChar(5)
+  employees                 Employee[]                 @relation("EmployeeVillage")
+  // ✅ REMOVED (Jan 19, 2025): schools - Use BeneficiaryOrganization instead
+  sppgs                     SPPG[]                     @relation("SppgVillage")
+  beneficiaryOrganizations  BeneficiaryOrganization[]  // ✅ NEW: Organizations in this village
+  district                  District                   @relation(fields: [districtId], references: [id], onDelete: Cascade)
 
   @@unique([districtId, code])
   @@index([districtId, type])
@@ -5820,6 +6360,30 @@ enum SchoolServingMethod {
   HYBRID
 }
 
+enum EnrollmentStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  COMPLETED
+  CANCELLED
+  GRADUATED
+}
+
+enum AccreditationGrade {
+  A
+  B
+  C
+  UNACCREDITED
+}
+
+enum RoadCondition {
+  PAVED_GOOD
+  PAVED_DAMAGED
+  UNPAVED_PASSABLE
+  DIFFICULT_ACCESS
+  VERY_DIFFICULT
+}
+
 enum UserType {
   SUPERADMIN
   SPPG_ADMIN
@@ -6036,6 +6600,50 @@ enum ProgramStatus {
   ARCHIVED
 }
 
+enum BudgetSource {
+  APBN_PUSAT           // Anggaran Pendapatan dan Belanja Negara - Pusat
+  APBD_PROVINSI        // Anggaran Pendapatan dan Belanja Daerah - Provinsi
+  APBD_KABUPATEN       // Anggaran Pendapatan dan Belanja Daerah - Kabupaten
+  APBD_KOTA            // Anggaran Pendapatan dan Belanja Daerah - Kota
+  HIBAH                // Hibah pemerintah
+  APBN_DEKONSENTRASI   // Dana dekonsentrasi dari pusat
+  DAK                  // Dana Alokasi Khusus
+  MIXED                // Campuran beberapa sumber
+}
+
+enum BgnRequestStatus {
+  DRAFT_LOCAL          // Draft di Bagizi-ID, belum submit ke BGN
+  SUBMITTED_TO_BGN     // Sudah submit ke portal BGN
+  UNDER_REVIEW_BGN     // Sedang direview BGN (status dari portal)
+  APPROVED_BY_BGN      // Diapprove BGN (dari portal/email notif)
+  DISBURSED            // Dana sudah cair ke rekening bank
+  REJECTED_BY_BGN      // Ditolak BGN
+  CANCELLED            // Dibatalkan SPPG
+}
+
+enum BudgetAllocationStatus {
+  ACTIVE               // Budget allocation aktif
+  FULLY_SPENT          // Budget sudah habis terpakai
+  PARTIALLY_SPENT      // Budget sebagian terpakai
+  FROZEN               // Budget dibekukan sementara
+  CANCELLED            // Budget allocation dibatalkan
+  EXPIRED              // Budget kadaluarsa (melewati fiscal year)
+}
+
+enum BudgetTransactionCategory {
+  FOOD_PROCUREMENT     // Pembelian bahan makanan
+  OPERATIONAL          // Operasional (listrik, air, gas)
+  TRANSPORT            // Transport & delivery
+  UTILITIES            // Utilitas
+  STAFF_SALARY         // Gaji staff
+  EQUIPMENT            // Peralatan dapur
+  PACKAGING            // Packaging & kemasan
+  MARKETING            // Marketing & sosialisasi
+  TRAINING             // Pelatihan & capacity building
+  MAINTENANCE          // Maintenance & perbaikan
+  OTHER                // Lain-lain
+}
+
 enum TargetGroup {
   TODDLER
   PREGNANT_WOMAN
@@ -6149,6 +6757,15 @@ enum ProcurementMethod {
   CONTRACT
   EMERGENCY
   BULK
+}
+
+enum ProcurementPaymentMethod {
+  BANK_TRANSFER
+  CASH
+  CREDIT_CARD
+  DEBIT_CARD
+  CHECK
+  OTHER
 }
 
 enum SupplierType {
@@ -7273,4 +7890,267 @@ enum DistributionDeliveryStatus {
   FAILED
   CANCELLED
   RETURNED
+}
+
+// ============================================================================
+// NEW: Multi-Beneficiary Architecture (MBG Program Support)
+// ============================================================================
+// Added: January 19, 2025
+// Purpose: Support all 5 MBG beneficiary types (not just schools)
+// Reference: docs/BENEFICIARY_MODEL_REDESIGN_ANALYSIS.md
+
+enum BeneficiaryOrganizationType {
+  SCHOOL // Sekolah (PAUD-SMA/SMK, termasuk Pesantren) - Target: SCHOOL_CHILDREN, TEENAGE_GIRL
+  HEALTH_FACILITY // Puskesmas/Klinik - Target: PREGNANT_WOMAN, BREASTFEEDING_MOTHER
+  INTEGRATED_SERVICE_POST // Posyandu (Pos Pelayanan Terpadu) - Target: TODDLER
+}
+
+enum BeneficiaryOrganizationSubType {
+  // Schools (Peserta Didik) - Target: SCHOOL_CHILDREN, TEENAGE_GIRL
+  PAUD // Pendidikan Anak Usia Dini
+  TK // Taman Kanak-Kanak
+  SD // Sekolah Dasar
+  SMP // Sekolah Menengah Pertama
+  SMA // Sekolah Menengah Atas
+  SMK // Sekolah Menengah Kejuruan
+  PESANTREN // Pesantren/Pondok Pesantren
+
+  // Health Facilities (Ibu Hamil, Ibu Menyusui) - Target: PREGNANT_WOMAN, BREASTFEEDING_MOTHER
+  PUSKESMAS // Pusat Kesehatan Masyarakat
+  KLINIK // Klinik Kesehatan
+  RUMAH_SAKIT // Rumah Sakit
+
+  // Integrated Service Post (Balita) - Target: TODDLER
+  POSYANDU // Pos Pelayanan Terpadu
+}
+
+enum OrganizationOwnershipStatus {
+  NEGERI // Government-owned
+  SWASTA // Private-owned
+}
+
+enum ProgramEnrollmentStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+  SUSPENDED
+}
+
+// ============================================================================
+// Model: BeneficiaryOrganization
+// ============================================================================
+// Purpose: Universal model for ALL beneficiary organizations in MBG program
+// Supports: Schools, Health Facilities, Posyandu, Community Centers, etc.
+// Replaces: School model (for enrollment purposes)
+
+model BeneficiaryOrganization {
+  id     String @id @default(cuid())
+  sppgId String
+
+  // Organization Identity
+  organizationName String                          @db.VarChar(255)
+  organizationCode String                          @unique @db.VarChar(50)
+  type             BeneficiaryOrganizationType
+  subType          BeneficiaryOrganizationSubType?
+
+  // Location (Required for all types) - Using proper foreign keys (hierarchical order)
+  address     String  @db.Text
+  provinceId  String  // Provinsi ID (Required - Level 1)
+  regencyId   String  // Kabupaten/Kota ID (Required - Level 2)
+  districtId  String? // Kecamatan ID (Optional - Level 3)
+  villageId   String? // Kelurahan/Desa ID (Optional - Level 4)
+  postalCode  String? @db.VarChar(10)
+  latitude    Float?
+  longitude   Float?
+
+  // Contact Information
+  phone         String? @db.VarChar(20)
+  email         String? @db.VarChar(255)
+  contactPerson String? @db.VarChar(255)
+  contactTitle  String? @db.VarChar(100)
+
+  // Type-Specific Identifiers (conditional usage)
+  npsn               String? @unique @db.VarChar(20) // For schools only (Nomor Pokok Sekolah Nasional)
+  nikkes             String? @unique @db.VarChar(30) // For health facilities (NIK Kesehatan)
+  registrationNumber String? @db.VarChar(50) // For other organization types
+
+  // Principal/Head Information (mainly for schools)
+  principalName String? @db.VarChar(255)
+  principalNip  String? @db.VarChar(30)
+
+  // Ownership Status (using enum for type safety)
+  ownershipStatus OrganizationOwnershipStatus?
+
+  // Staff/Personnel Counts (applies to all organization types)
+  teachingStaffCount    Int? // Jumlah Guru/Tenaga Pengajar/Kader (for Schools/Health/Posyandu)
+  nonTeachingStaffCount Int? // Jumlah Tendik/Tenaga Non-Pengajar (for Schools/Health facilities)
+  establishedYear       Int? // Year organization was established
+
+  // Operational Status
+  operationalStatus String  @default("ACTIVE") @db.VarChar(20) // ACTIVE, INACTIVE, TEMPORARILY_CLOSED
+  isActive          Boolean @default(true)
+
+  // Additional Information
+  notes String? @db.Text
+
+  // Relations (hierarchical order matching location cascade)
+  sppg        SPPG                           @relation(fields: [sppgId], references: [id], onDelete: Cascade)
+  province    Province                       @relation(fields: [provinceId], references: [id], onDelete: Restrict)
+  regency     Regency                        @relation(fields: [regencyId], references: [id], onDelete: Restrict)
+  district    District?                      @relation(fields: [districtId], references: [id], onDelete: Restrict)
+  village     Village?                       @relation(fields: [villageId], references: [id], onDelete: Restrict)
+  enrollments ProgramBeneficiaryEnrollment[]
+
+  // PHASE 3: New Relations
+  distributions FoodDistribution[] // ✅ NEW (Phase 3): Food distributions to this organization
+
+  // Future: Can add more relations as needed
+  // feedbacks     BeneficiaryFeedback[]
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  @@index([sppgId])
+  @@index([type, subType])
+  @@index([provinceId, regencyId])
+  @@index([operationalStatus])
+  @@map("beneficiary_organizations")
+}
+
+// ============================================================================
+// Model: ProgramBeneficiaryEnrollment
+// ============================================================================
+// Purpose: Universal enrollment model for ALL beneficiary types in MBG program
+// Supports: 5 target groups (Students, Pregnant Women, Breastfeeding Mothers, Toddlers, Teachers)
+// Replaces: ProgramSchoolEnrollment (school-specific model)
+
+model ProgramBeneficiaryEnrollment {
+  id               String @id @default(cuid())
+  beneficiaryOrgId String
+  programId        String
+  sppgId           String
+
+  // Enrollment Period
+  enrollmentDate DateTime  @default(now())
+  startDate      DateTime
+  endDate        DateTime?
+
+  // Target Group Configuration (CRITICAL - defines who receives meals)
+  targetGroup TargetGroup // SCHOOL_CHILDREN, PREGNANT_WOMAN, BREASTFEEDING_MOTHER, TODDLER, etc.
+
+  // Beneficiary Count (flexible terminology, not "students")
+  targetBeneficiaries Int // Total target beneficiaries
+  activeBeneficiaries Int? // Current active beneficiaries
+
+  // Age Groups (applicable for multiple target groups)
+  beneficiaries0to2Years   Int? // Toddlers (Balita)
+  beneficiaries2to5Years   Int? // PAUD/TK age
+  beneficiaries6to12Years  Int? // SD age
+  beneficiaries13to15Years Int? // SMP age
+  beneficiaries16to18Years Int? // SMA age
+  beneficiariesAbove18     Int? // Adults (Teachers, Pregnant Women, etc.)
+
+  // ✅ NEW (Phase 3 - November 7, 2025): Target-Specific Data
+  // REASON: Different target groups need different breakdown fields
+  // - PREGNANT_WOMAN: firstTrimester, secondTrimester, thirdTrimester
+  // - BREASTFEEDING_MOTHER: babyAge0to6Months, babyAge6to12Months, babyAge12to24Months
+  // - SCHOOL_CHILDREN: elementaryStudents, juniorHighStudents, seniorHighStudents
+  // - TODDLER: age0to2Years, age2to5Years
+  // - TEENAGE_GIRL: age10to14, age15to19
+  // - ELDERLY: age60to69, age70to79, age80Plus
+  targetGroupSpecificData Json? // Flexible JSON field for target-specific breakdowns
+
+  // Gender Breakdown (applicable for all target groups)
+  maleBeneficiaries   Int?
+  femaleBeneficiaries Int?
+
+  // Feeding Configuration (universal for all types)
+  feedingDays   Int? // Days per week (e.g., 5 for weekdays)
+  mealsPerDay   Int? // Meals per day (e.g., 1 for lunch only)
+  feedingTime   String? @db.VarChar(50) // e.g., "Lunch and Snack"
+  breakfastTime String? @db.VarChar(10) // e.g., "07:30"
+  lunchTime     String? @db.VarChar(10) // e.g., "12:00"
+  snackTime     String? @db.VarChar(10) // e.g., "15:00"
+
+  // Delivery Configuration (universal)
+  deliveryAddress       String? @db.Text
+  deliveryContact       String? @db.VarChar(255)
+  deliveryPhone         String? @db.VarChar(20)
+  deliveryInstructions  String? @db.Text
+  preferredDeliveryTime String? @db.VarChar(50)
+  estimatedTravelTime   Int? // In minutes
+
+  // Service Configuration (universal)
+  storageCapacity Int? // Capacity at beneficiary location
+  servingMethod   String? @db.VarChar(50) // e.g., "On-site", "Take-home package"
+
+  // Budget Tracking (for government program monitoring only)
+  monthlyBudgetAllocation Float? // Monthly budget allocation from APBD/APBN
+  budgetPerBeneficiary    Float? // Cost per beneficiary for tracking purposes
+
+  // Performance Tracking (universal)
+  totalMealsServed         Int?      @default(0)
+  totalBeneficiariesServed Int?      @default(0)
+  averageAttendanceRate    Float? // Percentage
+  lastDistributionDate     DateTime?
+  lastMonitoringDate       DateTime?
+
+  // Quality Metrics (universal)
+  satisfactionScore       Float? // Average satisfaction (1-5 scale)
+  complaintCount          Int?   @default(0)
+  nutritionComplianceRate Float? // Percentage
+
+  // Special Requirements (type-specific, optional)
+  specialDietaryNeeds   String? @db.Text // JSON or comma-separated
+  allergenRestrictions  String? @db.Text // JSON or comma-separated
+  culturalPreferences   String? @db.Text // e.g., Halal, Vegetarian
+  medicalConsiderations String? @db.Text // For pregnant women, elderly, etc.
+
+  // Program-Specific Configuration (for specialized programs)
+  programFocus          String? @db.VarChar(100) // e.g., "Stunting Prevention", "Maternal Health"
+  supplementaryServices String? @db.Text // Additional services provided (JSON)
+
+  // Status & Flags
+  enrollmentStatus ProgramEnrollmentStatus @default(ACTIVE)
+  isActive         Boolean                 @default(true)
+  isPriority       Boolean                 @default(false) // Priority beneficiaries
+  needsAssessment  Boolean                 @default(false) // Requires nutritional assessment
+
+  // Administrative
+  enrolledBy    String? // User ID who enrolled
+  approvedBy    String? // User ID who approved (if applicable)
+  approvedAt    DateTime?
+  remarks       String?   @db.Text
+  internalNotes String?   @db.Text
+
+  // Relations
+  beneficiaryOrg BeneficiaryOrganization @relation(fields: [beneficiaryOrgId], references: [id], onDelete: Cascade)
+  program        NutritionProgram        @relation("ProgramBeneficiaryEnrollments", fields: [programId], references: [id], onDelete: Cascade)
+  sppg           SPPG                    @relation(fields: [sppgId], references: [id], onDelete: Cascade)
+
+  // PHASE 3: New Relations
+  distributions FoodDistribution[] // ✅ NEW (Phase 3): Food distributions for this enrollment
+
+  // Future relations (to be added as features are implemented)
+  // monitoringRecords ProgramMonitoring[]
+  // assessments       NutritionalAssessment[]
+  // feedbacks         BeneficiaryFeedback[]
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([beneficiaryOrgId, programId, targetGroup], name: "unique_enrollment_per_target")
+  @@index([beneficiaryOrgId])
+  @@index([programId])
+  @@index([sppgId])
+  @@index([targetGroup])
+  @@index([enrollmentStatus])
+  @@index([startDate, endDate])
+  @@map("program_beneficiary_enrollments")
 }

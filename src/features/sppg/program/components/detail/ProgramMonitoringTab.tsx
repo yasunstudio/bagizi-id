@@ -3,67 +3,229 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Calendar, Edit, Users, AlertCircle, UtensilsCrossed, Factory, Truck, TrendingUp } from 'lucide-react'
-import { formatDate, calculateProgress } from '@/features/sppg/program/lib/programUtils'
-import type { Program, ProgramWithStats } from '@/features/sppg/program/types/program.types'
+import { Skeleton } from '@/components/ui/skeleton'
+import { 
+  Calendar, 
+  Plus, 
+  TrendingUp, 
+  TrendingDown, 
+  Users, 
+  DollarSign,
+  UtensilsCrossed,
+  AlertCircle,
+  CheckCircle2,
+  Clock
+} from 'lucide-react'
+import { formatDate, formatCurrency } from '@/features/sppg/program/lib/programUtils'
+import { useMonitoringReports } from '@/features/sppg/program/hooks'
+import type { 
+  MonitoringChallenges, 
+  MonitoringAchievements,
+  MonitoringResponse 
+} from '@/features/sppg/program/types/monitoring.types'
 import Link from 'next/link'
 
 interface ProgramMonitoringTabProps {
-  program: Program
-  programStats?: ProgramWithStats
   programId: string
 }
 
-export function ProgramMonitoringTab({ program, programStats, programId }: ProgramMonitoringTabProps) {
-  const stats = programStats?._count || {
-    menus: 0,
-    menuPlans: 0,
-    productions: 0,
-    distributions: 0,
-    schools: 0,
-    feedback: 0,
+export function ProgramMonitoringTab({ programId }: ProgramMonitoringTabProps) {  
+  // Fetch latest 6 months of monitoring data
+  // useMonitoringReports returns MonitoringListResponse: { data: MonitoringResponse[], pagination: {...} }
+  const { data: monitoringData, isLoading, error } = useMonitoringReports(programId, {
+    limit: 6
+  })
+
+  const reportsList: MonitoringResponse[] = monitoringData?.data || []
+  const latestReport = reportsList[0]
+
+  // 🔍 DEBUG: Log data yang diterima
+  console.log('🔍 [ProgramMonitoringTab] Debug Info:', {
+    programId,
+    isLoading,
+    hasError: !!error,
+    errorMessage: error?.message,
+    hasMonitoringData: !!monitoringData,
+    monitoringDataStructure: monitoringData ? Object.keys(monitoringData) : null,
+    hasDataProperty: monitoringData && 'data' in monitoringData,
+    reportsListLength: reportsList.length,
+    reportsList: reportsList,
+    firstReport: latestReport ? { 
+      id: latestReport.id, 
+      monitoringDate: latestReport.monitoringDate 
+    } : null
+  })
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4 mt-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i}>
+              <CardHeader className="pb-3">
+                <Skeleton className="h-4 w-24" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-8 w-16 mb-2" />
+                <Skeleton className="h-3 w-32" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-48" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-32 w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="mt-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center py-8">
+              <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+              <h4 className="font-semibold mb-2">Gagal Memuat Data Monitoring</h4>
+              <p className="text-sm text-muted-foreground">
+                {error instanceof Error ? error.message : 'Terjadi kesalahan saat memuat data'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (reportsList.length === 0) {
+    return (
+      <div className="space-y-4 mt-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center py-12">
+              <div className="h-20 w-20 rounded-full bg-muted mx-auto mb-6 flex items-center justify-center">
+                <Calendar className="h-10 w-10 text-muted-foreground" />
+              </div>
+              <h3 className="text-xl font-semibold mb-2">Belum Ada Laporan Monitoring</h3>
+              <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                Program ini belum memiliki laporan monitoring bulanan. Mulai dengan membuat laporan pertama untuk melacak progres program.
+              </p>
+              <Button asChild size="lg">
+                <Link href={`/program/${programId}/monitoring/new`}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Buat Laporan Monitoring
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const stats = latestReport?.stats || {
+    budgetUtilization: 0,
+    costPerMeal: 0,
+    costPerRecipient: 0,
+    productionEfficiency: 0,
+    servingRate: 0,
+    averageQualityScore: 0
   }
 
   return (
     <div className="space-y-4 mt-4">
-      {/* Statistics Cards */}
+      {/* Header with Action Button */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Monitoring Program</h3>
+          <p className="text-sm text-muted-foreground">
+            {reportsList.length} laporan bulanan tersedia
+          </p>
+        </div>
+        <Button asChild>
+          <Link href={`/program/${programId}/monitoring/new`}>
+            <Plus className="h-4 w-4 mr-2" />
+            Laporan Baru
+          </Link>
+        </Button>
+      </div>
+
+      {/* Key Metrics Cards - Latest Report */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <DollarSign className="h-4 w-4 text-primary" />
+              Utilisasi Anggaran
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-baseline gap-2">
+              <p className="text-2xl font-bold">
+                {stats.budgetUtilization.toFixed(1)}%
+              </p>
+              {stats.budgetUtilization < 100 ? (
+                <TrendingDown className="h-4 w-4 text-green-500" />
+              ) : (
+                <TrendingUp className="h-4 w-4 text-amber-500" />
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {formatCurrency(latestReport.budgetUtilized)} dari {formatCurrency(latestReport.budgetAllocated)}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
               <UtensilsCrossed className="h-4 w-4 text-primary" />
-              Total Menu
+              Efisiensi Produksi
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{stats.menus}</p>
-            <p className="text-xs text-muted-foreground mt-1">Menu tersedia</p>
+            <div className="flex items-baseline gap-2">
+              <p className="text-2xl font-bold">
+                {stats.productionEfficiency.toFixed(1)}%
+              </p>
+              {stats.productionEfficiency >= 90 ? (
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+              ) : (
+                <AlertCircle className="h-4 w-4 text-amber-500" />
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {latestReport.totalMealsDistributed} dari {latestReport.totalMealsProduced} porsi
+            </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Factory className="h-4 w-4 text-primary" />
-              Total Produksi
+              <Users className="h-4 w-4 text-primary" />
+              Tingkat Kehadiran
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{stats.productions}</p>
-            <p className="text-xs text-muted-foreground mt-1">Sesi produksi</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Truck className="h-4 w-4 text-primary" />
-              Total Distribusi
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{stats.distributions}</p>
-            <p className="text-xs text-muted-foreground mt-1">Porsi terdistribusi</p>
+            <div className="flex items-baseline gap-2">
+              <p className="text-2xl font-bold">
+                {stats.servingRate.toFixed(1)}%
+              </p>
+              {stats.servingRate >= 90 ? (
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+              ) : (
+                <AlertCircle className="h-4 w-4 text-amber-500" />
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {latestReport.activeRecipients} dari {latestReport.targetRecipients} anak
+            </p>
           </CardContent>
         </Card>
 
@@ -71,225 +233,160 @@ export function ProgramMonitoringTab({ program, programStats, programId }: Progr
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-primary" />
-              Total Feedback
+              Skor Kualitas
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{stats.feedback}</p>
-            <p className="text-xs text-muted-foreground mt-1">Dari penerima</p>
+            <div className="flex items-baseline gap-2">
+              <p className="text-2xl font-bold">
+                {stats.averageQualityScore?.toFixed(1) || '0.0'}
+              </p>
+              <span className="text-xs text-muted-foreground">/ 100</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Rata-rata kualitas program
+            </p>
           </CardContent>
         </Card>
       </div>
 
+      {/* Latest Report Detail */}
       <Card>
         <CardHeader>
-          <CardTitle>Aktivitas Program</CardTitle>
-          <CardDescription>
-            Riwayat dan status terkini program
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Laporan Terbaru</CardTitle>
+              <CardDescription>
+                {formatDate(latestReport.monitoringDate, 'MMMM yyyy')}
+              </CardDescription>
+            </div>
+            <Badge variant="outline">
+              <Clock className="h-3 w-3 mr-1" />
+              {formatDate(latestReport.createdAt, 'dd MMM yyyy')}
+            </Badge>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-start gap-4 p-4 border rounded-lg">
-              <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center">
-                <Calendar className="h-5 w-5 text-green-600 dark:text-green-400" />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between mb-1">
-                  <h4 className="font-semibold">Program Dibuat</h4>
-                  <span className="text-sm text-muted-foreground">
-                    {formatDate(program.createdAt, 'dd MMM yyyy')}
-                  </span>
+          <div className="space-y-6">
+            {/* Budget Summary */}
+            <div>
+              <h4 className="font-semibold mb-3">Ringkasan Anggaran</h4>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="p-3 border rounded-lg">
+                  <p className="text-xs text-muted-foreground mb-1">Biaya per Porsi</p>
+                  <p className="text-lg font-semibold">{formatCurrency(stats.costPerMeal)}</p>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  Program {program.name} telah didaftarkan dalam sistem
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-4 p-4 border rounded-lg">
-              <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                <Edit className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between mb-1">
-                  <h4 className="font-semibold">Terakhir Diperbarui</h4>
-                  <span className="text-sm text-muted-foreground">
-                    {formatDate(program.updatedAt, 'dd MMM yyyy HH:mm')}
-                  </span>
+                <div className="p-3 border rounded-lg">
+                  <p className="text-xs text-muted-foreground mb-1">Biaya per Penerima</p>
+                  <p className="text-lg font-semibold">{formatCurrency(stats.costPerRecipient)}</p>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  Data program terakhir kali dimodifikasi
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-4 p-4 border rounded-lg">
-              <div className="h-10 w-10 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
-                <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between mb-1">
-                  <h4 className="font-semibold">Status Penerima</h4>
-                  <Badge variant={program.currentRecipients >= program.targetRecipients ? "default" : "secondary"}>
-                    {calculateProgress(program.currentRecipients, program.targetRecipients)}%
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {program.currentRecipients} dari {program.targetRecipients} target penerima terdaftar
-                </p>
-              </div>
-            </div>
-
-            {program.endDate && new Date(program.endDate) < new Date() && (
-              <div className="flex items-start gap-4 p-4 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">
-                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
-                <div>
-                  <h4 className="font-semibold text-amber-600 dark:text-amber-400">
-                    Program Telah Berakhir
-                  </h4>
-                  <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">
-                    Program ini telah melewati tanggal berakhir ({formatDate(program.endDate, 'dd MMM yyyy')}). 
-                    Pertimbangkan untuk mengubah status atau memperpanjang program.
+                <div className="p-3 border rounded-lg">
+                  <p className="text-xs text-muted-foreground mb-1">
+                    {stats.budgetUtilization < 100 ? 'Penghematan' : 'Overbudget'}
+                  </p>
+                  <p className={`text-lg font-semibold ${stats.budgetUtilization < 100 ? 'text-green-600' : 'text-amber-600'}`}>
+                    {formatCurrency(Math.abs(latestReport.budgetAllocated - latestReport.budgetUtilized))}
                   </p>
                 </div>
               </div>
+            </div>
+
+            {/* Challenges */}
+            {latestReport.challenges && (
+              <div>
+                <h4 className="font-semibold mb-3">Tantangan & Kendala</h4>
+                <div className="space-y-2">
+                  {(latestReport.challenges as MonitoringChallenges).major?.map((challenge, idx: number) => (
+                    <div key={idx} className="flex items-start gap-3 p-3 border rounded-lg bg-amber-50/50 dark:bg-amber-950/20">
+                      <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{challenge.description}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant="outline" className="text-xs">
+                            {challenge.category}
+                          </Badge>
+                          <Badge variant={challenge.status === 'resolved' ? 'default' : 'secondary'} className="text-xs">
+                            {challenge.status === 'resolved' ? 'Terselesaikan' : 'Berlangsung'}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
+
+            {/* Achievements */}
+            {latestReport.achievements && (
+              <div>
+                <h4 className="font-semibold mb-3">Pencapaian</h4>
+                <div className="space-y-2">
+                  {(latestReport.achievements as MonitoringAchievements).milestones?.map((milestone, idx: number) => (
+                    <div key={idx} className="flex items-start gap-3 p-3 border rounded-lg bg-green-50/50 dark:bg-green-950/20">
+                      <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium">{milestone.title}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{milestone.description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* View All Reports Link */}
+            <div className="pt-4 border-t">
+              <Button asChild variant="outline" className="w-full">
+                <Link href={`/program/${programId}/monitoring`}>
+                  Lihat Semua Laporan Monitoring
+                </Link>
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Integrasi Data</CardTitle>
-          <CardDescription>
-            Data terkait dari modul lain
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {stats.menus > 0 || stats.productions > 0 || stats.distributions > 0 ? (
-            <div className="space-y-4">
-              {/* Menu Integration */}
-              {stats.menus > 0 && (
-                <div className="flex items-start gap-4 p-4 border rounded-lg hover:bg-accent/50 transition-colors">
-                  <div className="h-10 w-10 rounded-full bg-orange-100 dark:bg-orange-900 flex items-center justify-center">
-                    <UtensilsCrossed className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <h4 className="font-semibold">Menu Tersedia</h4>
-                      <Badge variant="secondary">{stats.menus} menu</Badge>
+      {/* Historical Reports Summary */}
+      {reportsList.length > 1 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Riwayat Monitoring</CardTitle>
+            <CardDescription>
+              {reportsList.length - 1} laporan sebelumnya
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {reportsList.slice(1, 4).map((report) => (
+                <div key={report.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="font-medium text-sm">
+                        {formatDate(report.monitoringDate, 'MMMM yyyy')}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Dilaporkan: {formatDate(report.createdAt, 'dd MMM yyyy')}
+                      </p>
                     </div>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Program ini memiliki {stats.menus} menu yang sudah dikonfigurasi dengan informasi nutrisi lengkap
-                    </p>
-                    <Button asChild variant="outline" size="sm">
-                      <Link href={`/menu?programId=${programId}`}>
-                        Lihat Daftar Menu
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <p className="text-sm font-medium">{report.stats?.productionEfficiency.toFixed(1)}%</p>
+                      <p className="text-xs text-muted-foreground">Efisiensi</p>
+                    </div>
+                    <Button asChild variant="ghost" size="sm">
+                      <Link href={`/program/${programId}/monitoring/${report.id}`}>
+                        Detail
                       </Link>
                     </Button>
                   </div>
                 </div>
-              )}
-
-              {/* Production Integration */}
-              {stats.productions > 0 && (
-                <div className="flex items-start gap-4 p-4 border rounded-lg hover:bg-accent/50 transition-colors">
-                  <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                    <Factory className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <h4 className="font-semibold">Sesi Produksi</h4>
-                      <Badge variant="secondary">{stats.productions} sesi</Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Terdapat {stats.productions} sesi produksi makanan yang telah dilakukan untuk program ini
-                    </p>
-                    <Button asChild variant="outline" size="sm">
-                      <Link href={`/production?programId=${programId}`}>
-                        Lihat Data Produksi
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Distribution Integration */}
-              {stats.distributions > 0 && (
-                <div className="flex items-start gap-4 p-4 border rounded-lg hover:bg-accent/50 transition-colors">
-                  <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center">
-                    <Truck className="h-5 w-5 text-green-600 dark:text-green-400" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <h4 className="font-semibold">Distribusi Makanan</h4>
-                      <Badge variant="secondary">{stats.distributions} distribusi</Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Program telah melakukan {stats.distributions} distribusi makanan ke sekolah mitra
-                    </p>
-                    <Button asChild variant="outline" size="sm">
-                      <Link href={`/distribution?programId=${programId}`}>
-                        Lihat Data Distribusi
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Summary Card */}
-              <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
-                <div className="flex items-start gap-3">
-                  <TrendingUp className="h-5 w-5 text-primary mt-0.5" />
-                  <div>
-                    <h4 className="font-semibold text-primary mb-1">
-                      Integrasi Aktif
-                    </h4>
-                    <p className="text-sm text-muted-foreground">
-                      Program ini telah terintegrasi dengan {
-                        [
-                          stats.menus > 0 && 'Menu',
-                          stats.productions > 0 && 'Produksi',
-                          stats.distributions > 0 && 'Distribusi'
-                        ].filter(Boolean).join(', ')
-                      }. Data akan otomatis tersinkronisasi.
-                    </p>
-                  </div>
-                </div>
-              </div>
+              ))}
             </div>
-          ) : (
-            <div className="text-center py-8">
-              <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h4 className="font-semibold mb-2">Belum Ada Data Integrasi</h4>
-              <p className="text-sm text-muted-foreground mb-4">
-                Program ini belum memiliki data terkait dari modul lain
-              </p>
-              <div className="flex flex-col sm:flex-row gap-2 justify-center">
-                <Button asChild variant="outline" size="sm">
-                  <Link href={`/menu/create?programId=${programId}`}>
-                    <UtensilsCrossed className="h-4 w-4 mr-2" />
-                    Tambah Menu
-                  </Link>
-                </Button>
-                <Button asChild variant="outline" size="sm">
-                  <Link href={`/production/create?programId=${programId}`}>
-                    <Factory className="h-4 w-4 mr-2" />
-                    Mulai Produksi
-                  </Link>
-                </Button>
-                <Button asChild variant="outline" size="sm">
-                  <Link href={`/distribution/create?programId=${programId}`}>
-                    <Truck className="h-4 w-4 mr-2" />
-                    Atur Distribusi
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
